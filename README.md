@@ -24,8 +24,6 @@ A goose lives on your desktop. He has opinions about you. He will:
 
 - Python 3.12+
 - PyQt6
-- PyQt6-Qt6
-- PyQt6-sip
 
 Install dependencies:
 
@@ -41,7 +39,7 @@ pip install PyQt6
 python main.py
 ```
 
-The goose appears on your desktop. He runs on top of all windows and cannot be clicked through (by design). Press and hold **ESC** to quit.
+The goose appears on your desktop. He runs on top of all windows and cannot be clicked through (by design).
 
 ---
 
@@ -81,16 +79,16 @@ Drop `.ttf` or `.otf` font files into `assets/fonts/`. The first loaded font is 
 
 ```
 PyGoose/
-├── main.py                   # Entry point
-├── config.ini                # Auto-generated settings
+├── main.py                    # Entry point
+├── config.ini                 # Auto-generated settings (not tracked)
 ├── assets/
-│   ├── fonts/                # Handwriting fonts for notepad
-│   ├── images/memes/         # Meme images
-│   ├── sounds/               # Honks, pats, music
+│   ├── fonts/                 # Handwriting fonts for notepad
+│   ├── images/memes/          # Meme images
+│   ├── sounds/                # Honks, pats, music
 │   └── text/notepad_messages/ # Goose notes
 ├── pygoose/
-│   ├── engine/               # Vector math, IK rig, timing, deck shuffle
-│   └── goose/                # Game loop, renderer, tasks, windows
+│   ├── engine/                # Vector math, IK rig, timing, deck shuffle
+│   └── goose/                 # Game loop, renderer, tasks, windows
 └── tests/
 ```
 
