@@ -23,18 +23,6 @@ A goose lives on your desktop. He has opinions about you. He will:
 
 ---
 
-## Fake sleep & freak-out
-
-If the goose is fake sleeping (15% chance), he'll periodically crack open one eye. Get your cursor within 150px while his eye is open and:
-
-1. He freezes (0.75s) — processing what he's seeing
-2. Both eyes snap open with an exclamation mark above his head (0.75s)
-3. He screams off-screen at full speed, honking the whole way
-
-Then he sneaks back: crawls to the screen edge, peeks in, sweeps his gaze left and right, and slowly walks back onto the screen before resuming normal life.
-
----
-
 ## Requirements
 
 - Python 3.12+
