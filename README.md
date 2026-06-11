@@ -50,6 +50,14 @@ pip install PyQt6
 python main.py
 ```
 
+**macOS only:** Install `pyobjc-framework-Quartz` for full mouse interaction (stealing, petting). Without it the goose still runs, but can't grab your mouse. PyGoose will tell you if it's missing when it starts.
+
+```bash
+pip install pyobjc-framework-Quartz
+```
+
+You also need to grant **Accessibility** permission to Terminal (or your Python interpreter) in System Settings → Privacy & Security → Accessibility. PyGoose will prompt you on first launch if it's not set.
+
 The goose appears on your desktop. He runs on top of all windows and cannot be clicked through (by design).
 
 ---

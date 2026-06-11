@@ -280,7 +280,7 @@ style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
 ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style | WS_EX_LAYERED | WS_EX_TRANSPARENT)
 ```
 
-**macOS:** `WA_TransparentForMouseEvents` is sufficient. Accessibility permission is required for cursor manipulation — detect and prompt on first use.
+**macOS:** `WA_TransparentForMouseEvents` alone is insufficient. After `show()`, call `setIgnoresMouseEvents_(True)` on each NSWindow via PyObjC (`AppKit.NSApp.windows()`). This is required for reliable click-through on macOS. Accessibility permission is also required for cursor manipulation — detect via `Quartz.AXIsProcessTrusted()` and prompt on startup if not granted.
 
 **Linux/X11:** `WA_TransparentForMouseEvents` is sufficient. No extra steps.
 
@@ -877,7 +877,7 @@ def run_nab_mouse():
 
 **Windows:** `ctypes.windll.user32.ClipCursor(ctypes.byref(RECT(left, top, right, bottom)))`. Release with `ClipCursor(None)`.
 
-**macOS:** No `ClipCursor` equivalent. Simulate by moving cursor to beak tip every frame via `pyautogui.moveTo()`.
+**macOS:** No `ClipCursor` equivalent. Simulate by moving cursor to the center of the clip rect each frame via `QCursor.setPos()`. Requires Accessibility permission — silently does nothing if not granted (graceful degradation).
 
 **Linux:** Use `XGrabPointer` or the macOS simulation approach with `Xlib`.
 
@@ -1577,8 +1577,10 @@ Additionally, when `DEV_FORCE_TASK` is set, the SLEEP task always uses the top-l
 - Bring to foreground: `SetForegroundWindow(hwnd)` when goose grabs cursor.
 
 ### macOS
-- Accessibility permissions required for cursor position read and move.
-- No `ClipCursor` equivalent — simulate with `pyautogui.moveTo()`.
+- Click-through: `WA_TransparentForMouseEvents` is not enough alone — also call `NSApp.windows()[n].setIgnoresMouseEvents_(True)` via PyObjC after `show()`.
+- Accessibility permissions required for cursor move (`QCursor.setPos()`). Check with `Quartz.AXIsProcessTrusted()` on startup and show a dialog if not granted.
+- If `pyobjc-framework-Quartz` is not installed, show a dialog on startup telling the user to `pip install pyobjc-framework-Quartz`. Goose still runs without it — mouse stealing just won't work.
+- No `ClipCursor` equivalent — simulate by calling `QCursor.setPos()` to the clip rect center each frame.
 
 ### Linux
 - Check for `DISPLAY` env var; abort with message if not set.
@@ -1632,7 +1634,7 @@ App must not crash if sound files are missing — log a warning and continue.
 | Donate window | Shows after 480s | Omitted |
 | Config file name | `config.goos` | `config.ini` |
 | Sound backend | WinMM `mciSendString` | `pygame.mixer` |
-| Cursor clip on macOS | Not supported (Windows-only) | Simulated with rapid moveTo |
+| Cursor clip on macOS | Not supported (Windows-only) | Simulated with `QCursor.setPos()` each frame; requires Accessibility permission |
 | Mod format | C# DLLs | Python plugins |
 | First UX sequence | TrackMud → Meme hardcoded | Same behavior, cleaner implementation |
 | Linux support | None | X11 supported |
@@ -1648,13 +1650,19 @@ The goal is a double-click-to-run experience for users who have no Python instal
 
 ### 34.1 Output mode
 
-Use **one-folder** (`--onedir`) as the primary distribution format:
+**Windows and Linux:** Use **one-folder** (`--onedir`):
 
-- A folder containing `PyGoose.exe` plus DLLs, Qt platform plugins, and the assets tree
+- A folder containing the executable plus DLLs, Qt platform plugins, and the assets tree
 - Startup is instant (no extraction step)
 - User zips the folder and shares it, or just hands over the folder
 
-**One-file** (`--onefile`) is not recommended as the default: every launch extracts ~80MB to a temp directory, causing a 3–5 second black-screen delay before anything appears. Acceptable as an optional secondary build target if someone specifically needs a single file.
+**macOS:** Use **one-file** (`--onefile`):
+
+- Produces a single `PyGoose` binary
+- macOS Gatekeeper quarantines each file individually in a one-folder build, requiring the user to approve every DLL and dylib. A single binary means one approval and it runs.
+- Trade-off: each launch extracts ~80MB to a temp directory (~2–3 second delay on first launch after a cold boot). Acceptable for macOS given the Gatekeeper UX problem it solves.
+
+The `PyGoose.spec` is platform-aware: `is_mac = sys.platform == 'darwin'` gates which output mode is used.
 
 ### 34.2 Asset path resolution
 

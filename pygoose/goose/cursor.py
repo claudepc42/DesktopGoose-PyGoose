@@ -25,9 +25,8 @@ elif sys.platform == "darwin":
         import Quartz
 
         def set_cursor_clip(x: float, y: float, w: float, h: float):
-            # macOS: simulate by moving cursor to clip center each frame
-            # Called every frame from dragging logic
-            pass
+            from PyQt6.QtGui import QCursor
+            QCursor.setPos(int(x + w / 2), int(y + h / 2))
 
         def release_cursor_clip():
             pass

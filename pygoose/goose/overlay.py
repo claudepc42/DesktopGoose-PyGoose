@@ -57,6 +57,13 @@ class Overlay(QWidget):
             ctypes.windll.user32.SetWindowLongW(
                 hwnd, GWL_EXSTYLE, style | WS_EX_LAYERED | WS_EX_TRANSPARENT
             )
+        elif sys.platform == "darwin":
+            try:
+                from AppKit import NSApp
+                for win in NSApp.windows():
+                    win.setIgnoresMouseEvents_(True)
+            except Exception:
+                pass
 
     def _start_loop(self):
         self._timer = QTimer()
