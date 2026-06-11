@@ -2,7 +2,7 @@
 
 A Python/PyQt6 reimplementation of [samperson's Desktop Goose](https://samperson.itch.io/desktop-goose) — a chaotic little goose that wanders your screen, steals your mouse, and leaves you passive-aggressive notes.
 
-![Version](https://img.shields.io/badge/version-0.32-orange) ![Python](https://img.shields.io/badge/python-3.12%2B-blue) ![PyQt6](https://img.shields.io/badge/PyQt6-6.x-green) ![Windows](https://img.shields.io/badge/Windows-0078D6?logo=windows&logoColor=white) ![macOS](https://img.shields.io/badge/macOS-000000?logo=apple&logoColor=white) ![Linux](https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=black)
+![Version](https://img.shields.io/badge/version-0.33-orange) ![Python](https://img.shields.io/badge/python-3.12%2B-blue) ![PyQt6](https://img.shields.io/badge/PyQt6-6.x-green) ![Windows](https://img.shields.io/badge/Windows-0078D6?logo=windows&logoColor=white) ![macOS](https://img.shields.io/badge/macOS-000000?logo=apple&logoColor=white) ![Linux](https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=black)
 
 ---
 
@@ -15,30 +15,38 @@ A goose lives on your desktop. He has opinions about you. He will:
 - **Follow you around** at a comfortable distance, march-honking when the mood strikes
 - **Sneak up on you** — creep in crawl pose, wait for the right moment, then pounce and steal your mouse
 - **Steal your mouse** and drag it somewhere else, honking triumphantly
-- **Deliver notepad messages** — handwritten, passive-aggressive, non-negotiable
-- **Drop memes** on your screen that you have to deal with
+- **Deliver notepad messages** — handwritten, passive-aggressive, non-negotiable. Keeps up to 2 on screen; evicts one to make room for the next
+- **Drop memes** on your screen that you have to deal with — same 2-window rule applies
 - **Track mud** across everything while running amok
 - **Sleep in the corner** — circles down in a spiral, tucks his head, and takes a nap
 - **Fake sleep** — sometimes he's just pretending, and if he opens one eye and you're too close, he panics
 
 ---
 
-## Requirements
+## Download (no Python needed)
+
+Prebuilt bundles for Windows, macOS, and Linux are on the [Releases page](https://github.com/claudepc42/PyGoose/releases). Download the archive for your platform, extract it anywhere, and run the `PyGoose` executable — nothing else to install.
+
+| Archive | Platform |
+|---------|----------|
+| `PyGoose-<version>-windows.zip` | Windows 10/11 |
+| `PyGoose-<version>-macos.zip` | macOS |
+| `PyGoose-<version>-linux.tar.gz` | Linux |
+| `PyGoose-<version>-python-source.zip` | Any platform with Python 3.12+ |
+
+Your customizable `assets/images/memes/` and `assets/text/notepad_messages/` folders sit next to the executable — edit them freely.
+
+---
+
+## Running from source
+
+Requirements:
 
 - Python 3.12+
 - PyQt6
 
-Install dependencies:
-
 ```bash
 pip install PyQt6
-```
-
----
-
-## Running
-
-```bash
 python main.py
 ```
 
@@ -88,8 +96,8 @@ Drop `.ttf` or `.otf` font files into `assets/fonts/`. The first loaded font is 
 | Sneak Attack | Crouches into a crawl, sneaks toward cursor, then pounces and drags the mouse |
 | Nab Mouse | Chases cursor at full speed, grabs it with his beak, drags it away |
 | Track Mud | Runs offscreen into a mud puddle, then sprints back across the screen leaving footprints |
-| Collect Notepad | Drags a passive-aggressive notepad message onto your screen |
-| Collect Meme | Drags a meme image onto your screen |
+| Collect Notepad | Drags a passive-aggressive notepad message onto your screen. Keeps up to 2 notes on screen at once — if 2 are already up, grabs a random one and drags it back offscreen before fetching a new one |
+| Collect Meme | Drags a meme image onto your screen. Same 2-window limit and eviction behavior as notepad |
 | Sleep | Walks to a corner, circles in a shrinking spiral, then tucks in for 90 seconds to 8 minutes |
 | Fake Sleep | Looks like real sleep but isn't — see above |
 | Peek Back | Post-freak-out return sequence: crawl to edge, peek in, sweep gaze, walk back |

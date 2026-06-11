@@ -1,5 +1,9 @@
 from __future__ import annotations
 import math
+import random
+# Module-level aliases so hot per-tick task handlers don't re-import every frame
+_math = math
+_random = random
 
 # Dev testing flags — set DEV_FORCE_TASK to a Task name string to force that task, or None for normal
 DEV_FORCE_TASK = None
@@ -9,7 +13,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import QMetaObject, Qt
+from PyQt6.QtCore import QMetaObject, Qt, QRect
+from PyQt6.QtGui import QCursor
 
 from pygoose.engine.vector2 import Vector2
 from pygoose.engine.math_utils import lerp, clamp, random_range
@@ -17,7 +22,10 @@ from pygoose.engine.easings import cubic_ease_in_out
 from pygoose.engine.rig import Rig
 from pygoose.engine.deck import Deck
 from pygoose.engine.time_keeper import TimeKeeper, DELTA_TIME
-from pygoose.goose.renderer import update_rig, render_goose, render_foot_marks
+from pygoose.goose.renderer import (
+    update_rig, render_goose, render_foot_marks,
+    FOOT_MARK_LIFETIME, FOOT_MARK_SHRINK_TIME,
+)
 from pygoose.goose.cursor import set_cursor_clip, release_cursor_clip, is_left_mouse_down
 from pygoose.goose.sound import Sound
 
@@ -64,6 +72,8 @@ TASK_WEIGHTED_LIST = [
     Task.COLLECT_WINDOW_MEME,
     Task.COLLECT_WINDOW_MEME,
     Task.COLLECT_WINDOW_NOTEPAD,
+    Task.COLLECT_WINDOW_NOTEPAD,
+    Task.COLLECT_WINDOW_NOTEPAD,
     Task.NAB_MOUSE,
     Task.NAB_MOUSE,
     Task.NAB_MOUSE,
@@ -105,6 +115,8 @@ WANDER_GOOD_ENOUGH_DIST = 20.0
 # ---------------------------------------------------------------------------
 
 class CollectWindowStage(Enum):
+    WALKING_TO_EVICT = "walking_to_evict"
+    EVICTING_WINDOW = "evicting_window"
     WALKING_OFFSCREEN = "walking_offscreen"
     WAITING_TO_BRING_WINDOW_BACK = "waiting_to_bring_window_back"
     DRAGGING_WINDOW_BACK = "dragging_window_back"
@@ -121,6 +133,9 @@ class CollectWindowState:
     wait_start_time: float = 0.0
     secs_to_wait: float = 0.0
     window_closed_early: bool = False
+    window_type: str = ""                    # "meme" or "notepad"
+    evict_window: object = None              # existing window being dragged off
+    evict_window_offset: Vector2 = field(default_factory=lambda: Vector2(0.0, 0.0))
 
 
 # ---------------------------------------------------------------------------
@@ -333,6 +348,18 @@ FEET_DISTANCE_APART = 6.0
 OVERSHOOT_FRACTION = 0.4
 WANT_STEP_AT_DISTANCE = 5.0
 
+# Dirty-rect extents around the goose position (px). Must fully contain every
+# drawn pixel in all states (extended neck, beak, shadow, feet, sleep bubbles,
+# exclamation) or repaints would clip. Measured worst-case extents across the
+# full state space (all directions, neck/sit/tuck extremes, bubbles, exclamation)
+# are L=49.5 R=51.3 U=96.0 D=36.5, so these are comfortably generous. (Shrinking
+# the box was measured to give no CPU benefit — Qt re-blits the whole translucent
+# layered window per update regardless of region — so we keep the safe margins.)
+DIRTY_LEFT  = 100
+DIRTY_RIGHT = 100
+DIRTY_UP    = 110
+DIRTY_DOWN  = 90
+
 
 class Goose:
     def __init__(self, config=None):
@@ -382,14 +409,22 @@ class Goose:
         self.task_sleep: SleepState | None = None
         self.task_peek_back: PeekBackState | None = None
 
-        # Window placed — watch for angry close
-        self._placed_window = None
-        self._placed_window_time = -1.0
-        self._placed_window_closed = False
-        self._placed_window_permanent = False  # if True, anger never expires
+        # Placed windows — up to 2 of each type kept on screen
+        self._placed_memes: list = []
+        self._placed_notepads: list = []
+        # Anger tracking: only the most recently placed window triggers NAB_MOUSE if closed
+        self._anger_window = None
+        self._anger_time = -1.0
+        self._anger_closed = False
+        self._anger_permanent = False
 
         # Mouse polling state
         self._last_mouse_down = False
+
+        # Render-skip: signature of the last frame's render-affecting state.
+        # When nothing that influences drawn pixels has changed, the overlay can
+        # skip the repaint entirely (the layered window keeps the last frame).
+        self._last_render_sig = None
 
         self._target_sit_lerp = 0.0
         self._target_neck_tuck = 0.0
@@ -410,7 +445,7 @@ class Goose:
 
     def tick(self):
         self.time_keeper.tick()
-        self._check_placed_window()
+        self._check_placed_windows()
         self._check_petting()
         self._run_physics()
         self._solve_feet()
@@ -437,18 +472,47 @@ class Goose:
         )
 
     def dirty_rect(self):
-        """Region needing repaint this frame: the goose plus any footmarks
-        mid-shrink. Static footmarks keep their previously painted pixels."""
-        from PyQt6.QtCore import QRect
-        from pygoose.goose.renderer import FOOT_MARK_LIFETIME, FOOT_MARK_SHRINK_TIME
-        r = QRect(int(self.position.x) - 100, int(self.position.y) - 110, 200, 200)
+        """Decide whether this frame needs repainting and, if so, which region.
+
+        Returns ``None`` when every pixel-affecting input is unchanged from the
+        last painted frame (the overlay then skips the repaint — the layered
+        window already holds identical pixels). Otherwise returns the QRect to
+        invalidate: the goose's box, unioned with any footmarks mid-shrink.
+
+        The signature below is the *complete* set of inputs consumed by
+        ``render_foot_marks`` + ``update_rig`` + ``render_goose``. Comparing the
+        raw values (not quantized) guarantees a skipped frame is bitwise
+        identical, so this can never change what the user sees.
+        """
+        rig = self.rig
+        # sleep_phase only affects pixels while bubbles are shown (real sleep);
+        # during fake sleep it still increments but draws nothing, so exclude it.
+        sleep_token = rig.sleep_phase if rig.show_sleep_bubbles else 0.0
+        sig = (
+            self.position.x, self.position.y, self.direction,
+            self.l_foot_pos.x, self.l_foot_pos.y,
+            self.r_foot_pos.x, self.r_foot_pos.y,
+            rig.sit_lerp_percent, rig.neck_tuck_lerp_percent, rig.neck_lerp_percent,
+            rig.is_sleeping, rig.show_sleep_bubbles, rig.peek_eye, rig.show_exclamation,
+            sleep_token,
+        )
+
         t = self.time_keeper.time
+        r = QRect(int(self.position.x) - DIRTY_LEFT, int(self.position.y) - DIRTY_UP,
+                  DIRTY_LEFT + DIRTY_RIGHT, DIRTY_UP + DIRTY_DOWN)
+        any_mark_animating = False
         for m in self.foot_marks:
             if m.time == 0.0:
                 continue
             shrink_start = m.time + FOOT_MARK_LIFETIME
             if shrink_start - 0.1 <= t <= shrink_start + FOOT_MARK_SHRINK_TIME + 0.1:
+                any_mark_animating = True
                 r = r.united(QRect(int(m.position.x) - 6, int(m.position.y) - 6, 12, 12))
+
+        changed = (sig != self._last_render_sig) or any_mark_animating
+        self._last_render_sig = sig
+        if not changed:
+            return None
         return r
 
     # -----------------------------------------------------------------------
@@ -605,27 +669,31 @@ class Goose:
     # Placed window anger check
     # -----------------------------------------------------------------------
 
-    def _check_placed_window(self):
-        if self._placed_window is None:
+    def _check_placed_windows(self):
+        if self._anger_window is None:
             return
         t = self.time_keeper.time
-        if self._placed_window_closed:
-            self._placed_window = None
-            self._placed_window_closed = False
+        if self._anger_closed:
+            self._anger_window = None
+            self._anger_closed = False
             self._set_task(Task.NAB_MOUSE)
-        elif not self._placed_window_permanent and t - self._placed_window_time >= 3.0:
-            self._placed_window = None
+        elif not self._anger_permanent and t - self._anger_time >= 3.0:
+            self._anger_window = None
 
-    def _on_placed_window_closed(self):
-        self._placed_window_closed = True
+    def _make_placed_window_close_cb(self, window, window_type: str):
+        def on_close():
+            lst = self._placed_memes if window_type == "meme" else self._placed_notepads
+            if window in lst:
+                lst.remove(window)
+            if self._anger_window is window:
+                self._anger_closed = True
+        return on_close
 
     # -----------------------------------------------------------------------
     # Petting detection
     # -----------------------------------------------------------------------
 
     def _check_petting(self):
-        import random as _random
-        from PyQt6.QtGui import QCursor
         mouse_down = is_left_mouse_down()
         if (self.current_task != Task.NAB_MOUSE
                 and mouse_down
@@ -684,15 +752,19 @@ class Goose:
             )
         elif task == Task.COLLECT_WINDOW_NOTEPAD:
             from pygoose.goose.windows.notepad_window import NotepadWindow
-            self._start_collect_window(NotepadWindow(font_size=self.config.notepad_font_size))
+            self._start_collect_window(NotepadWindow(font_size=self.config.notepad_font_size), "notepad")
         elif task == Task.COLLECT_WINDOW_MEME:
             from pygoose.goose.windows.meme_window import MemeWindow
-            self._start_collect_window(MemeWindow())
+            self._start_collect_window(MemeWindow(), "meme")
         elif task == Task.COLLECT_WINDOW_EXEC:
             self._set_speed(SpeedTier.WALK)
-            direction = self._set_target_offscreen()
-            self.task_collect_window.screen_direction = direction
-            self._set_window_offset_for_direction(direction)
+            c = self.task_collect_window
+            if c and c.stage == CollectWindowStage.WALKING_TO_EVICT:
+                pass  # target/direction already set up by _start_collect_window
+            else:
+                direction = self._set_target_offscreen()
+                c.screen_direction = direction
+                self._set_window_offset_for_direction(direction)
         elif task == Task.TRACK_MUD:
             self.task_track_mud = TrackMudState()
         elif task == Task.FOLLOW_MOUSE:
@@ -712,8 +784,6 @@ class Goose:
                 give_up_time=t + SNEAK_MAX_DURATION,
             )
         elif task == Task.SLEEP:
-            import random as _random
-            import math as _math
             self._set_speed(SpeedTier.WALK)
             corners = [
                 Vector2(SLEEP_CORNER_MARGIN, SLEEP_CORNER_MARGIN),
@@ -728,8 +798,6 @@ class Goose:
             )
             self.target_pos = nest
         elif task == Task.PEEK_BACK:
-            import random as _random
-            import math as _math
             self._set_speed(SpeedTier.SNEAK)
             self.rig.sit_lerp_percent = 1.0
             self.rig.neck_tuck_lerp_percent = 1.0
@@ -838,7 +906,6 @@ class Goose:
     # -----------------------------------------------------------------------
 
     def _get_cursor_pos(self) -> Vector2:
-        from PyQt6.QtGui import QCursor
         p = QCursor.pos()
         return Vector2(float(p.x()), float(p.y()))
 
@@ -891,9 +958,37 @@ class Goose:
     # Task: CollectWindow
     # -----------------------------------------------------------------------
 
-    def _start_collect_window(self, window):
-        self.task_collect_window = CollectWindowState(main_window=window)
-        self._set_task(Task.COLLECT_WINDOW_EXEC, honk=False)
+    def _start_collect_window(self, window, window_type: str):
+        lst = self._placed_memes if window_type == "meme" else self._placed_notepads
+        state = CollectWindowState(main_window=window, window_type=window_type)
+
+        if len(lst) >= 2:
+            evict_win = _random.choice(lst)
+            lst.remove(evict_win)
+            if self._anger_window is evict_win:
+                self._anger_window = None
+            wpos = evict_win.pos()
+            w = float(evict_win.width())
+            h = float(evict_win.height())
+            cx = float(wpos.x()) + w / 2
+            mid_y = float(wpos.y()) + h / 2
+            if cx < self.screen_w / 2:
+                # Window is on the left — grab its right edge
+                evict_offset = Vector2(w, h / 2)
+                grab_x = float(wpos.x()) + w
+            else:
+                # Window is on the right — grab its left edge
+                evict_offset = Vector2(0.0, h / 2)
+                grab_x = float(wpos.x())
+            state.evict_window = evict_win
+            state.evict_window_offset = evict_offset
+            state.stage = CollectWindowStage.WALKING_TO_EVICT
+            self.task_collect_window = state
+            self.target_pos = Vector2(grab_x, mid_y)
+            self._set_task(Task.COLLECT_WINDOW_EXEC, honk=False)
+        else:
+            self.task_collect_window = state
+            self._set_task(Task.COLLECT_WINDOW_EXEC, honk=False)
 
     def _set_window_offset_for_direction(self, direction: ScreenDirection):
         cw = self.task_collect_window
@@ -910,12 +1005,46 @@ class Goose:
         t = self.time_keeper.time
         c = self.task_collect_window
 
-        if c.window_closed_early:
+        if c.window_closed_early and c.stage not in (
+            CollectWindowStage.WALKING_TO_EVICT, CollectWindowStage.EVICTING_WINDOW
+        ):
             c.window_closed_early = False
             self._set_task(Task.NAB_MOUSE)
             return
 
-        if c.stage == CollectWindowStage.WALKING_OFFSCREEN:
+        if c.stage == CollectWindowStage.WALKING_TO_EVICT:
+            if Vector2.distance(self.position, self.target_pos) < 15.0:
+                # Reached the old window — now drag it offscreen
+                ew = c.evict_window
+                cx = float(ew.pos().x()) + ew.width() / 2
+                if cx < self.screen_w / 2:
+                    self.target_pos = Vector2(-80.0, lerp(self.position.y, self.screen_h / 2, 0.3))
+                else:
+                    self.target_pos = Vector2(self.screen_w + 80.0, lerp(self.position.y, self.screen_h / 2, 0.3))
+                c.stage = CollectWindowStage.EVICTING_WINDOW
+
+        elif c.stage == CollectWindowStage.EVICTING_WINDOW:
+            offscreen = self.position.x < -40 or self.position.x > self.screen_w + 40
+            if offscreen or c.evict_window is None:
+                if c.evict_window is not None:
+                    try:
+                        c.evict_window.closing.disconnect()
+                    except Exception:
+                        pass
+                    c.evict_window.hide()
+                    c.evict_window.deleteLater()
+                    c.evict_window = None
+                self.override_extend_neck = False
+                direction = self._set_target_offscreen()
+                c.screen_direction = direction
+                c.stage = CollectWindowStage.WALKING_OFFSCREEN
+                self._set_window_offset_for_direction(direction)
+            else:
+                self.override_extend_neck = True
+                window_pos = self.rig.head2_end_point - c.evict_window_offset
+                c.evict_window.move_threadsafe(int(window_pos.x), int(window_pos.y))
+
+        elif c.stage == CollectWindowStage.WALKING_OFFSCREEN:
             if Vector2.distance(self.position, self.target_pos) < 5.0:
                 c.secs_to_wait = random_range(WAIT_TIME_MIN, WAIT_TIME_MAX)
                 c.wait_start_time = t
@@ -932,14 +1061,28 @@ class Goose:
                 h = float(c.main_window.height())
 
                 if d == ScreenDirection.LEFT:
-                    tx = w + random_range(15, 20)
-                    ty = lerp(self.position.y, self.screen_h / 2, random_range(0.2, 0.3))
+                    tx = w + random_range(15, 300)
+                    ty = random_range(h + 40, self.screen_h - 60)
                 elif d == ScreenDirection.RIGHT:
-                    tx = self.screen_w - (w + random_range(20, 30))
-                    ty = lerp(self.position.y, self.screen_h / 2, random_range(0.2, 0.3))
+                    tx = self.screen_w - (w + random_range(15, 300))
+                    ty = random_range(h + 40, self.screen_h - 60)
                 else:
-                    tx = lerp(self.position.x, self.screen_w / 2, random_range(0.2, 0.3))
-                    ty = h + random_range(80, 100)
+                    tx = random_range(w + 60, self.screen_w - w - 60)
+                    ty = h + random_range(80, 350)
+
+                # If one of this type is already on screen, place the new one
+                # messily overlapping — further in, random jitter in any direction.
+                lst = self._placed_memes if c.window_type == "meme" else self._placed_notepads
+                if lst:
+                    if d == ScreenDirection.LEFT:
+                        tx += random_range(50, 130)
+                        ty += random_range(-150, 150)
+                    elif d == ScreenDirection.RIGHT:
+                        tx -= random_range(50, 130)
+                        ty += random_range(-150, 150)
+                    else:
+                        ty += random_range(50, 130)
+                        tx += random_range(-150, 150)
 
                 self.target_pos = Vector2(
                     clamp(tx, w + 55, self.screen_w - w - 55),
@@ -949,13 +1092,15 @@ class Goose:
 
         elif c.stage == CollectWindowStage.DRAGGING_WINDOW_BACK:
             if Vector2.distance(self.position, self.target_pos) < 5.0:
-                # Watch window — notepad angers forever, meme angers within 3 seconds
                 from pygoose.goose.windows.notepad_window import NotepadWindow
-                self._placed_window = c.main_window
-                self._placed_window_time = t
-                self._placed_window_closed = False
-                self._placed_window_permanent = isinstance(c.main_window, NotepadWindow)
-                c.main_window.closing.connect(self._on_placed_window_closed)
+                lst = self._placed_memes if c.window_type == "meme" else self._placed_notepads
+                lst.append(c.main_window)
+                c.main_window.closing.connect(self._make_placed_window_close_cb(c.main_window, c.window_type))
+                # Most recently placed window is the one that angers the goose if closed
+                self._anger_window = c.main_window
+                self._anger_time = t
+                self._anger_closed = False
+                self._anger_permanent = isinstance(c.main_window, NotepadWindow)
                 self._set_task(Task.WANDER)
                 return
 
@@ -972,7 +1117,6 @@ class Goose:
     # -----------------------------------------------------------------------
 
     def _run_watch_mouse(self):
-        import random as _random
         t = self.time_keeper.time
         w = self.task_watch_mouse
 
@@ -1043,7 +1187,6 @@ class Goose:
     # -----------------------------------------------------------------------
 
     def _run_follow_mouse(self):
-        import random as _random
         t = self.time_keeper.time
         f = self.task_follow_mouse
         cursor_pos = self._get_cursor_pos()
@@ -1196,7 +1339,6 @@ class Goose:
     # -----------------------------------------------------------------------
 
     def _run_peek_back(self):
-        import math as _math
         t = self.time_keeper.time
         s = self.task_peek_back
 
@@ -1262,8 +1404,6 @@ class Goose:
     # -----------------------------------------------------------------------
 
     def _run_sleep(self):
-        import math as _math
-        import random as _random
         t = self.time_keeper.time
         s = self.task_sleep
 

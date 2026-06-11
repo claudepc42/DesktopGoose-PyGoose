@@ -70,6 +70,9 @@ dmypy.json
 
 # PyGoose — user config (auto-generated, not tracked)
 config.ini
+assets/music_cache.wav
 
 # Claude-specific files (local dev only)
 CLAUDE.md
+optimization.md
+HANDOFF.md

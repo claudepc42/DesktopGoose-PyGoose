@@ -1,5 +1,5 @@
 # PyGoose — Product Requirements Document
-**Version:** 0.32
+**Version:** 0.33
 **Status:** Active Development
 **Source:** Reverse-engineered from decompiled Desktop Goose v0.31 (arkangel-dev/desktop-goose-source) + original PyGoose implementation
 
@@ -197,7 +197,7 @@ DELTA_TIME = 1.0 / 120.0       # 0.008333334 seconds — FIXED, not measured
 # This matches original exactly — the original uses a fixed delta
 ```
 
-The game loop sleeps to target 120fps (`time.sleep(max(0, frame_deadline - time.perf_counter()))`). Delta time is always the fixed constant, not the measured frame time. This is how the original works and affects all physics values.
+Delta time is always the fixed constant, not the measured frame time. This is how the original works and affects all physics values. The simulation runs at 120 Hz (two fixed steps per 16 ms timer wake), while rendering runs at 60 Hz with dirty-rect partial repaints — see §7.4 for the actual loop. `TimeKeeper.sleep_remainder()` is retained for reference but unused; pacing comes from the `QTimer` interval.
 
 ---
 
@@ -290,13 +290,26 @@ Cover `QScreen.primaryScreen().geometry()` exactly. Do not use `availableGeometr
 
 ### 7.4 Render loop
 
+The loop is driven by a single `QTimer` and is decoupled into a **120 Hz simulation** and a **60 Hz render** to cut CPU without changing motion or appearance:
+
 ```
-Application.Idle equivalent:
-- QTimer with interval=0 (fires as fast as possible)
-- Each tick: time_keeper.tick(), game.update(), overlay.update() (calls repaint())
-- paintEvent(): game.render(painter)
-- After render, sleep remainder of frame budget to target 120fps
+- QTimer with interval=16 (~60 wakeups/sec)
+- Each wake (_tick in overlay.py):
+    - on_tick() called TWICE (two fixed 1/120 s physics steps → 120 Hz sim preserved)
+    - _update_quit() called twice (ESC-hold alpha advances at sim rate)
+    - schedule a partial repaint over the dirty rect (see below), not the whole screen
+- paintEvent(): game.render(painter) — only the invalidated region is repainted
 ```
+
+Physics still advances with the fixed `DELTA_TIME = 1/120` constant (two steps per wake), so all motion values are identical to a true 120 Hz loop. Only the *render* cadence dropped to 60 Hz, which is imperceptible for this content.
+
+**Dirty-rect repainting:** `Goose.dirty_rect()` returns the bounding box of the goose plus any footmarks currently mid-shrink. `overlay._tick()` unions the current rect with the previous frame's rect (to erase the trail) and calls `self.update(region)` instead of a full-screen `self.update()`. When the ESC quit bar is visible, its rect is unioned in as well. The box extents (`DIRTY_LEFT/RIGHT/UP/DOWN` in `goose.py`) are sized to contain every drawn pixel across all states; measured worst-case extents are L≈50 R≈51 U≈96 D≈37 px from the goose position (the up-extent is driven by sleep bubbles). Note: shrinking the box below those generous values yields **no** measurable CPU saving, because Qt re-blits the whole translucent layered window per update regardless of the invalidated region — so the lever is *update frequency*, not region area.
+
+**Identical-frame skipping (the main idle-CPU win):** `Goose.dirty_rect()` returns `None` when nothing that affects drawn pixels has changed since the last painted frame, and `overlay._tick()` then skips the repaint entirely (the layered window already holds identical pixels). The decision compares an exact, un-quantized signature of *every* render input — position, direction, both feet, the three rig lerps, `is_sleeping`/`show_sleep_bubbles`/`peek_eye`/`show_exclamation`, `sleep_phase` (only while bubbles are shown), and whether any footmark is mid-shrink. Because the comparison is bitwise, a skipped frame is provably identical, so this can never change what the user sees. During static behaviours (sit, fake-sleep, stand-still) this drops the goose from ~10% of one core to ~2%. The ESC quit bar animates independently, so the overlay still repaints its region while `_quit_alpha` is non-zero even when the goose is skipping.
+
+**Cached paint objects:** `renderer.py` builds each `QPen`/`QBrush` once (keyed by colour+width) and hoists Qt enum values (`NoPen`, `RoundCap`, `RoundJoin`, …) to module constants, instead of constructing pens and re-looking-up enums on every one of the ~15 draw calls per frame. Line endpoints shared between the outline and fill passes are computed once. These are pure-overhead removals with identical output and cut the Python render cost ~20%.
+
+`TimeKeeper.sleep_remainder()` exists for a sleep-based loop but is **not** used — the `QTimer` interval provides pacing instead, letting the Qt event loop idle between wakes.
 
 Use `QPainter` with `RenderHint.Antialiasing` enabled.
 
@@ -695,22 +708,24 @@ class Task(Enum):
 
 ```python
 TASK_WEIGHTED_LIST = [
-    Task.TRACK_MUD,                 # 2/14
+    Task.TRACK_MUD,                 # 2/16
     Task.TRACK_MUD,
-    Task.COLLECT_WINDOW_MEME,       # 2/14
+    Task.COLLECT_WINDOW_MEME,       # 2/16
     Task.COLLECT_WINDOW_MEME,
-    Task.COLLECT_WINDOW_NOTEPAD,    # 1/14
-    Task.NAB_MOUSE,                 # 3/14
+    Task.COLLECT_WINDOW_NOTEPAD,    # 3/16
+    Task.COLLECT_WINDOW_NOTEPAD,
+    Task.COLLECT_WINDOW_NOTEPAD,
+    Task.NAB_MOUSE,                 # 3/16
     Task.NAB_MOUSE,
     Task.NAB_MOUSE,
-    Task.WATCH_MOUSE,               # 2/14
+    Task.WATCH_MOUSE,               # 2/16
     Task.WATCH_MOUSE,
-    Task.FOLLOW_MOUSE,              # 2/14
+    Task.FOLLOW_MOUSE,              # 2/16
     Task.FOLLOW_MOUSE,
-    Task.SNEAK_ATTACK,              # 1/14
-    Task.SLEEP,                     # 1/14
+    Task.SNEAK_ATTACK,              # 1/16
+    Task.SLEEP,                     # 1/16
 ]
-# 14 entries total
+# 16 entries total
 
 task_picker_deck = Deck(len(TASK_WEIGHTED_LIST))
 ```
@@ -870,16 +885,49 @@ def run_nab_mouse():
 
 ## 15. Task: CollectWindow (Meme + Notepad)
 
-### 15.1 Stages
+### 15.1 Multi-window limit
 
-`WALKING_OFFSCREEN` → `WAITING_TO_BRING_WINDOW_BACK` → `DRAGGING_WINDOW_BACK`
+The goose keeps up to **2 meme windows** and **2 notepad windows** on screen simultaneously (4 total). Each type has its own independent pool — a meme and a notepad do not compete. Windows are not auto-closed when the goose fetches a new one; they stay until the user closes them or the goose evicts one.
+
+### 15.2 Stages
+
+Full stage sequence:
+
+```
+(if 2 of this type already on screen)
+WALKING_TO_EVICT → EVICTING_WINDOW →
+WALKING_OFFSCREEN → WAITING_TO_BRING_WINDOW_BACK → DRAGGING_WINDOW_BACK
+```
+
+When fewer than 2 of this type are on screen, the eviction stages are skipped and the flow starts at `WALKING_OFFSCREEN`.
 
 ```python
 WAIT_TIME_MIN = 2.0
 WAIT_TIME_MAX = 3.5
 ```
 
-### 15.2 `_set_target_offscreen()`
+### 15.3 Eviction (`WALKING_TO_EVICT` + `EVICTING_WINDOW`)
+
+When 2 windows of the target type are already on screen, the goose picks one at random to evict before fetching the new window.
+
+**Walk target:** The goose walks to the **grab edge** of the evict window (right edge for a left-side window, left edge for a right-side window), not the center. This avoids a snap when dragging begins.
+
+```python
+if window_center_x < screen_w / 2:
+    evict_offset = Vector2(window_width, window_height / 2)  # beak at right edge
+    grab_x = window.pos().x + window_width
+else:
+    evict_offset = Vector2(0, window_height / 2)             # beak at left edge
+    grab_x = window.pos().x
+target_pos = Vector2(grab_x, window_center_y)
+stage = WALKING_TO_EVICT
+```
+
+**Eviction drag:** Once the goose reaches the grab edge, it extends its neck, attaches the window to its beak (same `move_threadsafe` mechanism as normal dragging), and walks toward the nearest screen edge (−80px past left or +80px past right). When the goose goes offscreen, the evict window is hidden and deleted; the goose then transitions to `WALKING_OFFSCREEN` for the new window.
+
+The evicted window's `closing` signal is disconnected before hiding to prevent any anger callback from firing — the goose is the one removing it.
+
+### 15.4 `_set_target_offscreen()`
 
 ```python
 def _set_target_offscreen() -> ScreenDirection:
@@ -891,7 +939,7 @@ def _set_target_offscreen() -> ScreenDirection:
         return ScreenDirection.LEFT
 ```
 
-### 15.3 Window offset (beak attachment point)
+### 15.5 Window offset (beak attachment point)
 
 ```python
 if direction == ScreenDirection.LEFT:
@@ -902,46 +950,78 @@ elif direction == ScreenDirection.RIGHT:
     window_offset_to_beak = Vector2(0, window_height / 2)
 ```
 
-### 15.4 `run_collect_window()`
+### 15.6 Placement position
+
+The drop target is chosen in `WAITING_TO_BRING_WINDOW_BACK`:
+
+- **First window of its type:** placed with wide random spread — up to 300px from the entry edge, full vertical range (clamped to screen bounds).
+- **Second window of its type:** same base position plus a messy offset (50–130px further from edge, ±150px perpendicular jitter). The goose is not neat.
+
+```python
+if d == ScreenDirection.LEFT:
+    tx = w + random_range(15, 300)
+    ty = random_range(h + 40, screen_h - 60)
+elif d == ScreenDirection.RIGHT:
+    tx = screen_w - (w + random_range(15, 300))
+    ty = random_range(h + 40, screen_h - 60)
+else:  # TOP
+    tx = random_range(w + 60, screen_w - w - 60)
+    ty = h + random_range(80, 350)
+
+if another_of_same_type_on_screen:
+    # Extra messy offset
+    tx ± random_range(50, 130)   # further from edge
+    ty ± random_range(-150, 150)  # perpendicular jitter
+```
+
+### 15.7 `run_collect_window()`
 
 ```python
 def run_collect_window():
-    if stage == WALKING_OFFSCREEN:
+    if stage == WALKING_TO_EVICT:
+        if distance(position, target_pos) < 15.0:
+            # Set offscreen target for eviction
+            stage = EVICTING_WINDOW
+
+    elif stage == EVICTING_WINDOW:
+        if offscreen or evict_window gone:
+            hide and delete evict_window
+            direction = _set_target_offscreen()
+            stage = WALKING_OFFSCREEN
+        else:
+            override_extend_neck = True
+            evict_window.move_threadsafe(beak - evict_window_offset)
+
+    elif stage == WALKING_OFFSCREEN:
         if distance(position, target_pos) < 5.0:
-            secs_to_wait = random_range(WAIT_TIME_MIN, WAIT_TIME_MAX)
-            wait_start_time = t
             stage = WAITING_TO_BRING_WINDOW_BACK
 
     elif stage == WAITING_TO_BRING_WINDOW_BACK:
         velocity = Vector2.zero
         if t - wait_start_time > secs_to_wait:
-            # Show the window via queued Qt invoke (thread-safe)
             QMetaObject.invokeMethod(main_window, "show_dialog", QueuedConnection)
             main_window.closing.connect(on_window_closed_early)
-            # Set target near window entry side
-            ...
+            # compute placement target (see §15.6)
             stage = DRAGGING_WINDOW_BACK
 
     elif stage == DRAGGING_WINDOW_BACK:
         if distance(position, target_pos) < 5.0:
-            # Place window — notepad watches forever, meme has 3-second anger window
-            _placed_window = main_window
-            _placed_window_permanent = isinstance(main_window, NotepadWindow)
+            placed_list.append(main_window)
+            main_window.closing.connect(placed_window_close_callback)
+            anger_window = main_window
             set_task(Task.WANDER)
             return
-
         override_extend_neck = True
-        window_pos = rig.head2_end_point - window_offset_to_beak
-        main_window.move_threadsafe(int(window_pos.x), int(window_pos.y))
+        main_window.move_threadsafe(beak - window_offset_to_beak)
 ```
 
-### 15.5 Placed window anger
+### 15.8 Placed window anger
 
-After the window is placed, the goose watches it. If the user closes it:
-- **Notepad window**: goose attacks forever (no timeout) — gets angry any time it's closed
+The most recently placed window is the "anger window." If the user closes it:
+- **Notepad window**: goose attacks indefinitely (no timeout)
 - **Meme window**: goose gets angry only within 3 seconds of placing
 
-Both trigger `set_task(Task.NAB_MOUSE)`.
+Both trigger `set_task(Task.NAB_MOUSE)`. Closing any other (non-anger) placed window just removes it from the tracking list with no reprisal. The anger window reference updates whenever a new window is placed.
 
 ---
 
@@ -1226,6 +1306,8 @@ BUILTIN_PHRASES = [
 
 Load all `.txt` files from `assets/text/notepad_messages/`. Merge with built-in phrases into a single Deck. If directory doesn't exist or is empty, use only built-in phrases.
 
+The Deck is module-level and persists across `NotepadWindow` instances so the goose cycles through all phrases before repeating, even across multiple windows in the same session.
+
 ### 22.3 Window appearance
 
 - Size: 200×150 px
@@ -1252,7 +1334,7 @@ Load all `.txt` files from `assets/text/notepad_messages/`. Merge with built-in 
 
 Load all files from `assets/images/memes/`. Supported formats: PNG, JPG, JPEG, GIF, BMP, WEBP.
 
-Use a Deck for selection (no repeats until all shown).
+Use a Deck for selection (no repeats until all shown). The Deck is module-level and persists across `MemeWindow` instances so the goose cycles through all images before repeating, even across multiple windows in the same session.
 
 GIFs must animate — use `QMovie` for animated GIF playback inside a `QLabel`.
 
@@ -1343,6 +1425,19 @@ class Sound:
 ### 25.3 Silence mode
 
 If `config.silence_sounds = True`, all `Sound` methods are no-ops.
+
+### 25.4 Music PCM cache
+
+Looping `Music.mp3` through QMediaPlayer costs ~2% of a CPU core for the whole
+session (continuous MP3 decode) — it was the entire measured CPU floor of an
+otherwise-idle goose. On first run, `Sound` decodes the MP3 once in the
+background (`QAudioDecoder` → Int16 PCM) and writes `assets/music_cache.wav`
+(user-data side, gitignored, ~24 MB) via an atomic temp-file rename. Subsequent
+sessions feed the WAV to the *same* QMediaPlayer pipeline — identical audio,
+volume, and looping, with near-zero decode cost (static goose: ~2.0% → ~0.5% of
+a core). The cache is only written if the decoder honours Int16; any failure or
+a corrupt/missing cache silently falls back to the MP3 path. First session is
+behaviourally identical to before (MP3 plays immediately while the cache builds).
 
 ---
 
@@ -1659,27 +1754,11 @@ Currently all petting clicks within 30px of the goose head trigger the same NAB_
 
 Implementation notes to figure out: define a head hit zone (ellipse around `neck_head_point`/`head1_end_point`) vs. a body hit zone (ellipse around `body_center`). The zones may need to expand/shrink with the rig pose. The distinction between "annoyed honk" and "full attack" gives the goose more personality and makes clicking feel reactive rather than always punishing.
 
-### 35.2 Window cleanup (two-window limit with shredding)
+### 35.2 Window cleanup (two-window limit with eviction drag) — **Implemented in 0.33**
 
-When the goose tries to bring a third notepad or meme window onto the screen while two are already present, it should first remove one of the existing ones rather than piling up clutter.
+The goose keeps up to 2 notepad and 2 meme windows on screen (per type, independent pools). When a 3rd would be added, a random existing window of that type is evicted first — the goose walks to its edge, grabs it, drags it offscreen, and then fetches the new window normally. See §15 for full implementation details.
 
-**Motivation:** Without a limit, long sessions accumulate an ever-growing pile of windows. The cleanup mechanic reframes this as intentional goose behavior rather than a bug — he's not just dumping content, he has opinions about how many notes are appropriate. He brought it, he decides when it's done. The shredder is the payoff: it turns a housekeeping task into a moment.
-
-**Limit scope:** The original request was "two notes or two pictures" — meaning the limit is **per type**: up to 2 notepad windows and up to 2 meme windows can coexist. A notepad and a meme each count against their own pool, not a shared total.
-
-**Rough flow:**
-1. Goose picks a collect-window task (notepad or meme)
-2. Before walking offscreen to fetch it, check if 2 windows of that type are already on screen
-3. If so: goose grabs the oldest one of that type and drags it off-screen (reverse of the drag-back logic — beak-attach and walk toward the nearest edge)
-4. Once it disappears off the edge, play a shredder/destruction sound
-5. Then proceed to fetch the new window normally
-
-**Sound:** TBD — a new asset would be ideal (paper shredder, mechanical grinding, or a satisfying crunch). A placeholder of honk+chomp layered together could work in the interim.
-
-**Open questions:**
-- What happens if the user has moved the window to a different position? The goose should still be able to grab and drag it — treat current window position as the target regardless of where it originally landed.
-- Should the goose do this cleanup mid-task (interrupting a wander) or only at the moment of deciding the next task? The latter is simpler and less jarring.
-- Does the "anger if closed" behavior still apply during the removal drag? Probably not — the goose is the one removing it, so closing it during that drag shouldn't trigger an attack.
+**Remaining open item:** A shredder/destruction sound on eviction would add personality. Currently no sound plays when the evicted window disappears — honk+chomp layered would be a reasonable placeholder until a dedicated asset exists.
 
 ### 35.3 Floating draggable menu button
 

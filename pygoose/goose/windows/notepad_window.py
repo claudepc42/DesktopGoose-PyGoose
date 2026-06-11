@@ -8,6 +8,7 @@ from pygoose.engine.deck import Deck
 from pygoose.paths import resource_path, user_data_path
 
 _fonts_loaded = False
+_notepad_deck: "Deck | None" = None
 
 def _load_fonts():
     global _fonts_loaded
@@ -64,8 +65,10 @@ class NotepadWindow(MovableWindow):
         self.setWindowFlag(Qt.WindowType.MSWindowsFixedSizeDialogHint, True)
 
         phrases = _load_phrases()
-        deck = Deck(len(phrases))
-        text = phrases[deck.next()]
+        global _notepad_deck
+        if _notepad_deck is None or len(_notepad_deck.indices) != len(phrases):
+            _notepad_deck = Deck(len(phrases))
+        text = phrases[_notepad_deck.next()]
 
         self._edit = QTextEdit(self)
         self._edit.setFont(_handwriting_font(font_size))

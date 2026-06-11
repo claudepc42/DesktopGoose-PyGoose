@@ -83,6 +83,7 @@ WINDOW_TITLES = [
 
 
 _placeholder_deck: Deck | None = None
+_meme_deck: Deck | None = None
 
 
 def _get_placeholder_deck() -> Deck:
@@ -90,6 +91,13 @@ def _get_placeholder_deck() -> Deck:
     if _placeholder_deck is None:
         _placeholder_deck = Deck(len(PLACEHOLDER_MESSAGES))
     return _placeholder_deck
+
+
+def _get_meme_deck(n: int) -> Deck:
+    global _meme_deck
+    if _meme_deck is None or len(_meme_deck.indices) != n:
+        _meme_deck = Deck(n)
+    return _meme_deck
 
 
 def _local_images() -> list[str]:
@@ -120,8 +128,7 @@ class MemeWindow(MovableWindow):
 
         images = _local_images()
         if images:
-            deck = Deck(len(images))
-            self._load_local(images[deck.next()])
+            self._load_local(images[_get_meme_deck(len(images)).next()])
         else:
             msg = PLACEHOLDER_MESSAGES[_get_placeholder_deck().next()]
             self._label.setPixmap(_make_placeholder(msg))

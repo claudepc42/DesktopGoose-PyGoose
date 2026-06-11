@@ -71,13 +71,26 @@ class Overlay(QWidget):
             self._on_tick()
         self._update_quit()
         self._update_quit()
+
         if self._get_dirty_rect is None:
             self.update()
             return
+
+        # goose returns None when the frame is pixel-identical to the last paint.
         rect = self._get_dirty_rect()
+        quit_animating = self._quit_alpha > 0.01
+
+        if rect is None:
+            if not quit_animating:
+                # Nothing changed and the quit bar is idle — skip the repaint.
+                return
+            # Only the quit bar is animating; repaint just its region.
+            self.update(self._quit_bar_rect())
+            return
+
         union = rect.united(self._last_dirty_rect) if self._last_dirty_rect else self.rect()
         self._last_dirty_rect = rect
-        if self._quit_alpha > 0.01:
+        if quit_animating:
             union = union.united(self._quit_bar_rect())
         self.update(union)
 

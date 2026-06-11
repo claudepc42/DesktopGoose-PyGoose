@@ -18,6 +18,47 @@ COLOR_BLACK = QColor("black")
 COLOR_SADDLE_BROWN = QColor(0x8B, 0x45, 0x13)
 COLOR_YELLOW = QColor(0xFF, 0xE0, 0x00)
 
+# Hoisted enum values — avoids repeated Qt enum attribute lookups in the hot paint path
+_NO_PEN     = Qt.PenStyle.NoPen
+_ROUND_CAP  = Qt.PenCapStyle.RoundCap
+_ROUND_JOIN = Qt.PenJoinStyle.RoundJoin
+_DENSE4     = Qt.BrushStyle.Dense4Pattern
+
+# Cached pens/brushes. Pen params (color, width, round caps) are constant per run,
+# so build each combination once and reuse. Identical params => identical pixels.
+_pen_cache: dict = {}
+_brush_cache: dict = {}
+
+# Constant brushes built once
+_SHADOW_BRUSH = QBrush(QColor(80, 80, 80, 80), _DENSE4)
+_BLACK_BRUSH  = QBrush(COLOR_BLACK)
+_BROWN_BRUSH  = QBrush(COLOR_SADDLE_BROWN)
+_YELLOW_BRUSH = QBrush(COLOR_YELLOW)
+
+# Constant pen for the exclamation mark outline (black, width 1.5, round join)
+_EXCLAMATION_PEN = QPen(COLOR_BLACK, 1.5)
+_EXCLAMATION_PEN.setJoinStyle(_ROUND_JOIN)
+
+
+def _get_pen(color: QColor, width: int) -> QPen:
+    key = (color.rgba(), width)
+    pen = _pen_cache.get(key)
+    if pen is None:
+        pen = QPen(color, width)
+        pen.setCapStyle(_ROUND_CAP)
+        pen.setJoinStyle(_ROUND_JOIN)
+        _pen_cache[key] = pen
+    return pen
+
+
+def _get_brush(color: QColor) -> QBrush:
+    key = color.rgba()
+    brush = _brush_cache.get(key)
+    if brush is None:
+        brush = QBrush(color)
+        _brush_cache[key] = brush
+    return brush
+
 
 def update_rig(position: Vector2, direction: float, rig: Rig):
     fwd = Vector2.get_from_angle_degrees(direction)
@@ -43,15 +84,11 @@ def _pt(v: Vector2) -> QPointF:
 
 
 def _set_pen(painter: QPainter, color: QColor, width: int):
-    pen = QPen(color, width)
-    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-    pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-    painter.setPen(pen)
+    painter.setPen(_get_pen(color, width))
 
 
 def render_foot_marks(painter: QPainter, foot_marks: list, current_time: float):
-    painter.setPen(Qt.PenStyle.NoPen)
-    painter.setBrush(QBrush(COLOR_SADDLE_BROWN))
+    pen_set = False
     for mark in foot_marks:
         if mark.time == 0.0:
             continue
@@ -59,6 +96,11 @@ def render_foot_marks(painter: QPainter, foot_marks: list, current_time: float):
         p = clamp((current_time - shrink_start) / FOOT_MARK_SHRINK_TIME, 0.0, 1.0)
         radius = lerp(3.0, 0.0, p)
         if radius > 0:
+            if not pen_set:
+                # Defer state changes until we actually have a mark to draw
+                painter.setPen(_NO_PEN)
+                painter.setBrush(_BROWN_BRUSH)
+                pen_set = True
             painter.drawEllipse(_pt(mark.position), radius, radius)
 
 
@@ -77,57 +119,69 @@ def render_goose(painter: QPainter, rig: Rig, position: Vector2, direction: floa
         outline_color = QColor(config.goose_color_underbody)
         beak_color = QColor(config.goose_color_beak)
 
+    # Precompute the shared line endpoints once. The body/neck/head segments are
+    # each drawn twice (outline pass + fill pass); reusing the QPointF objects
+    # halves the QPointF/Vector2 allocations with identical output.
+    ub_a = _pt(rig.underbody_center + fwd * 7)
+    ub_b = _pt(rig.underbody_center - fwd * 7)
+    bd_a = _pt(rig.body_center + fwd * 11)
+    bd_b = _pt(rig.body_center - fwd * 11)
+    nb   = _pt(rig.neck_base)
+    nh   = _pt(rig.neck_head_point)
+    h1   = _pt(rig.head1_end_point)
+    h2   = _pt(rig.head2_end_point)
+    beak_tip = _pt(rig.head2_end_point + fwd * 5)
+
     # 1. Shadow — hatched dark gray ellipse
-    painter.setPen(Qt.PenStyle.NoPen)
-    shadow_brush = QBrush(QColor(80, 80, 80, 80), Qt.BrushStyle.Dense4Pattern)
-    painter.setBrush(shadow_brush)
+    painter.setPen(_NO_PEN)
+    painter.setBrush(_SHADOW_BRUSH)
     painter.drawEllipse(QPointF(position.x, position.y), 20.0, 15.0)
 
     # 2. Feet
-    painter.setBrush(QBrush(beak_color))
-    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(_get_brush(beak_color))
+    painter.setPen(_NO_PEN)
     painter.drawEllipse(_pt(l_foot_pos), 4.0, 4.0)
     painter.drawEllipse(_pt(r_foot_pos), 4.0, 4.0)
 
     # 3. Outline layer (light gray, drawn first so white overwrites)
     _set_pen(painter, outline_color, 15)
-    painter.drawLine(_pt(rig.underbody_center + fwd * 7), _pt(rig.underbody_center - fwd * 7))
+    painter.drawLine(ub_a, ub_b)
 
     _set_pen(painter, outline_color, 24)
-    painter.drawLine(_pt(rig.body_center + fwd * 11), _pt(rig.body_center - fwd * 11))
+    painter.drawLine(bd_a, bd_b)
 
     _set_pen(painter, outline_color, 15)
-    painter.drawLine(_pt(rig.neck_base), _pt(rig.neck_head_point))
+    painter.drawLine(nb, nh)
 
     _set_pen(painter, outline_color, 17)
-    painter.drawLine(_pt(rig.neck_head_point), _pt(rig.head1_end_point))
+    painter.drawLine(nh, h1)
 
     _set_pen(painter, outline_color, 12)
-    painter.drawLine(_pt(rig.head1_end_point), _pt(rig.head2_end_point))
+    painter.drawLine(h1, h2)
 
     # 4. White fill layer
     _set_pen(painter, body_color, 22)
-    painter.drawLine(_pt(rig.body_center + fwd * 11), _pt(rig.body_center - fwd * 11))
+    painter.drawLine(bd_a, bd_b)
 
     _set_pen(painter, body_color, 13)
-    painter.drawLine(_pt(rig.neck_base), _pt(rig.neck_head_point))
+    painter.drawLine(nb, nh)
 
     _set_pen(painter, body_color, 15)
-    painter.drawLine(_pt(rig.neck_head_point), _pt(rig.head1_end_point))
+    painter.drawLine(nh, h1)
 
     _set_pen(painter, body_color, 10)
-    painter.drawLine(_pt(rig.head1_end_point), _pt(rig.head2_end_point))
+    painter.drawLine(h1, h2)
 
     # 5. Beak
     _set_pen(painter, beak_color, 11)
-    painter.drawLine(_pt(rig.head2_end_point), _pt(rig.head2_end_point + fwd * 5))
+    painter.drawLine(h2, beak_tip)
 
     # 6. Eyes (hidden while sleeping, one may peek during fake sleep)
     b = Vector2(1.3, 0.4)
     left_eye  = rig.neck_head_point + UP * 3 - right * b.x * 3 + fwd * 5
     right_eye = rig.neck_head_point + UP * 3 + right * b.x * 3 + fwd * 5
-    painter.setBrush(QBrush(COLOR_BLACK))
-    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(_BLACK_BRUSH)
+    painter.setPen(_NO_PEN)
     if not rig.is_sleeping or rig.peek_eye == 3:
         painter.drawEllipse(_pt(left_eye), 2.0, 2.0)
         painter.drawEllipse(_pt(right_eye), 2.0, 2.0)
@@ -164,19 +218,16 @@ def _render_sleep_bubbles(painter: QPainter, rig: Rig):
         pos = Vector2(base.x + cfg["x_drift"], base.y - p * rise)
         color = QColor(255, 255, 255, alpha)
         outline = QColor(160, 200, 255, alpha)
-        pen = QPen(outline, 1)
-        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-        painter.setPen(pen)
-        painter.setBrush(QBrush(color))
+        # Bubble colors vary by alpha; cache keyed on rgba keeps this bounded (<=255 entries)
+        painter.setPen(_get_pen(outline, 1))
+        painter.setBrush(_get_brush(color))
         painter.drawEllipse(_pt(pos), r, r)
 
 
 def _render_exclamation(painter: QPainter, rig: Rig):
     base = rig.neck_head_point + UP * 22.0
-    outline_pen = QPen(COLOR_BLACK, 1.5)
-    outline_pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-    painter.setPen(outline_pen)
-    painter.setBrush(QBrush(COLOR_YELLOW))
+    painter.setPen(_EXCLAMATION_PEN)
+    painter.setBrush(_YELLOW_BRUSH)
     # Vertical bar: tall thin rounded rect
     bar = QRectF(base.x - 3.5, base.y - 14.0, 7.0, 10.0)
     painter.drawRoundedRect(bar, 2.0, 2.0)
