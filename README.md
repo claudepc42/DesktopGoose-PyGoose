@@ -27,12 +27,11 @@ A goose lives on your desktop. He has opinions about you. He will:
 
 - Python 3.12+
 - PyQt6
-- pygame (for sound)
 
 Install dependencies:
 
 ```bash
-pip install PyQt6 pygame
+pip install PyQt6
 ```
 
 ---
