@@ -1,0 +1,94 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            archive: zip
+          - os: macos-latest
+            platform: macos
+            archive: zip
+          - os: ubuntu-latest
+            platform: linux
+            archive: tar.gz
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Linux display dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libgl1-mesa-glx libegl1-mesa libxkbcommon-x11-0
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Build
+        run: python -m PyInstaller PyGoose.spec --noconfirm --clean
+
+      - name: Copy user assets
+        shell: bash
+        run: |
+          mkdir -p dist/PyGoose/assets/images/memes
+          mkdir -p dist/PyGoose/assets/text/notepad_messages
+          cp -r assets/images/memes/. dist/PyGoose/assets/images/memes/
+          cp -r assets/text/notepad_messages/. dist/PyGoose/assets/text/notepad_messages/
+
+      - name: Archive (zip)
+        if: matrix.archive == 'zip'
+        shell: bash
+        run: cd dist && zip -r PyGoose-${{ github.ref_name }}-${{ matrix.platform }}.zip PyGoose
+
+      - name: Archive (tar.gz)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: cd dist && tar -czf PyGoose-${{ github.ref_name }}-${{ matrix.platform }}.tar.gz PyGoose
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/PyGoose-${{ github.ref_name }}-${{ matrix.platform }}.zip
+            dist/PyGoose-${{ github.ref_name }}-${{ matrix.platform }}.tar.gz
+
+  source:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create source archive
+        shell: bash
+        run: |
+          zip -r PyGoose-${{ github.ref_name }}-python-source.zip . \
+            --exclude '.git/*' \
+            --exclude 'dist/*' \
+            --exclude 'build/*' \
+            --exclude '*/__pycache__/*' \
+            --exclude '*.pyc' \
+            --exclude '*.pyo' \
+            --exclude 'CLAUDE.md'
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: PyGoose-${{ github.ref_name }}-python-source.zip
