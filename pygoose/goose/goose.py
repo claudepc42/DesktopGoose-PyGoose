@@ -2,8 +2,9 @@ from __future__ import annotations
 import math
 
 # Dev testing flags — set DEV_FORCE_TASK to a Task name string to force that task, or None for normal
-DEV_FORCE_TASK = "watch_mouse"
-DEV_SHORT_WANDER = True
+DEV_FORCE_TASK = None
+DEV_SHORT_WANDER = False
+DEV_FORCE_FAKE_SLEEP = False
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -26,11 +27,13 @@ from pygoose.goose.sound import Sound
 # ---------------------------------------------------------------------------
 
 class SpeedTier(Enum):
-    WALK = "walk"
-    RUN = "run"
+    SNEAK  = "sneak"
+    WALK   = "walk"
+    RUN    = "run"
     CHARGE = "charge"
 
 SPEEDS = {
+    SpeedTier.SNEAK:  {"speed": 28.0,  "acceleration": 600.0,  "step_time": 0.45},
     SpeedTier.WALK:   {"speed": 80.0,  "acceleration": 1300.0, "step_time": 0.2},
     SpeedTier.RUN:    {"speed": 200.0, "acceleration": 1300.0, "step_time": 0.2},
     SpeedTier.CHARGE: {"speed": 400.0, "acceleration": 2300.0, "step_time": 0.1},
@@ -42,13 +45,17 @@ SPEEDS = {
 # ---------------------------------------------------------------------------
 
 class Task(Enum):
-    WANDER = "wander"
-    NAB_MOUSE = "nab_mouse"
-    COLLECT_WINDOW_MEME = "collect_window_meme"
-    COLLECT_WINDOW_NOTEPAD = "collect_window_notepad"
-    COLLECT_WINDOW_EXEC = "collect_window_exec"
-    TRACK_MUD = "track_mud"
-    WATCH_MOUSE = "watch_mouse"
+    WANDER                = "wander"
+    NAB_MOUSE             = "nab_mouse"
+    COLLECT_WINDOW_MEME   = "collect_window_meme"
+    COLLECT_WINDOW_NOTEPAD= "collect_window_notepad"
+    COLLECT_WINDOW_EXEC   = "collect_window_exec"
+    TRACK_MUD             = "track_mud"
+    WATCH_MOUSE           = "watch_mouse"
+    FOLLOW_MOUSE          = "follow_mouse"
+    SNEAK_ATTACK          = "sneak_attack"
+    SLEEP                 = "sleep"
+    PEEK_BACK             = "peek_back"
 
 
 TASK_WEIGHTED_LIST = [
@@ -62,6 +69,10 @@ TASK_WEIGHTED_LIST = [
     Task.NAB_MOUSE,
     Task.WATCH_MOUSE,
     Task.WATCH_MOUSE,
+    Task.FOLLOW_MOUSE,
+    Task.FOLLOW_MOUSE,
+    Task.SNEAK_ATTACK,
+    Task.SLEEP,
 ]
 
 
@@ -161,7 +172,7 @@ class TrackMudState:
 # ---------------------------------------------------------------------------
 
 WATCH_MOUSE_DURATION_MIN = 8.0
-WATCH_MOUSE_DURATION_MAX = 16.0
+WATCH_MOUSE_DURATION_MAX = 180.0
 BOB_INTERVAL_MIN = 1.2
 BOB_INTERVAL_MAX = 3.5
 BOB_DURATION = 0.35
@@ -188,6 +199,118 @@ class WatchMouseState:
     sub_state: WatchSubState = WatchSubState.WALK_SLOW
     next_sub_change_time: float = 0.0
     sit_entered_time: float = -1.0
+
+
+# ---------------------------------------------------------------------------
+# FollowMouse state
+# ---------------------------------------------------------------------------
+
+FOLLOW_PREFERRED_DIST_MIN  = 90.0
+FOLLOW_PREFERRED_DIST_MAX  = 160.0
+FOLLOW_FLEE_DIST           = 45.0
+FOLLOW_FLEE_DURATION       = 1.5
+FOLLOW_BOREDOM_MIN         = 15.0
+FOLLOW_BOREDOM_MAX         = 30.0
+FOLLOW_SNAP_GRAB_CHANCE    = 0.05
+HONK_MARCH_CHANCE          = 0.12   # chance per check interval to start a march
+HONK_MARCH_CHECK_INTERVAL  = 10.0
+HONK_MARCH_DURATION        = 2.5
+HONK_MARCH_RATE            = 0.38   # seconds between honks during march
+
+class FollowMouseStage(Enum):
+    RUSHING   = "rushing"
+    FOLLOWING = "following"
+    FLEEING   = "fleeing"
+
+@dataclass
+class FollowMouseState:
+    start_time: float
+    boredom_time: float
+    preferred_dist: float
+    stage: FollowMouseStage = FollowMouseStage.RUSHING
+    flee_target: Vector2 = field(default_factory=lambda: Vector2(0.0, 0.0))
+    flee_until: float = -1.0
+    honk_march_until: float = -1.0
+    next_march_honk_time: float = -1.0
+    next_march_check_time: float = 0.0
+
+
+# ---------------------------------------------------------------------------
+# SneakAttack state
+# ---------------------------------------------------------------------------
+
+SNEAK_STRIKE_DIST  = 65.0
+SNEAK_MAX_DURATION = 44.0
+SNEAK_HONK_RATE    = 0.32
+
+class SneakAttackStage(Enum):
+    SNEAKING  = "sneaking"
+    POUNCING  = "pouncing"
+    DRAGGING  = "dragging"
+    DECELERATING = "decelerating"
+
+@dataclass
+class SneakAttackState:
+    start_time: float
+    give_up_time: float
+    stage: SneakAttackStage = SneakAttackStage.SNEAKING
+    grabbed_time: float = -1.0
+    original_vector_to_mouse: Vector2 = field(default_factory=lambda: Vector2(0.0, 0.0))
+    drag_to: Vector2 = field(default_factory=lambda: Vector2(0.0, 0.0))
+    next_honk_time: float = -1.0
+
+
+# ---------------------------------------------------------------------------
+# Sleep state
+# ---------------------------------------------------------------------------
+
+SLEEP_CIRCLE_RADIUS   = 88.0
+SLEEP_CIRCLE_SPEED    = 0.75  # radians per second — slow dog-like circling
+SLEEP_CIRCLES_MIN     = 2.0
+SLEEP_CIRCLES_MAX     = 3.0
+SLEEP_SETTLE_DURATION = 2.2
+SLEEP_MIN_DURATION    = 90.0
+SLEEP_MAX_DURATION    = 480.0
+SLEEP_CORNER_MARGIN   = 165.0  # px from screen edge
+
+class SleepStage(Enum):
+    WALKING_TO_CORNER = "walking_to_corner"
+    CIRCLING          = "circling"
+    SETTLING          = "settling"
+    SLEEPING          = "sleeping"
+
+@dataclass
+class SleepState:
+    nest_pos: Vector2
+    spiral_start_angle: float = 0.0
+    stage: SleepStage = SleepStage.WALKING_TO_CORNER
+    spiral_t: float = 0.0
+    settle_start_time: float = -1.0
+    wake_time: float = -1.0
+    is_fake_sleep: bool = False
+    next_eye_event_time: float = -1.0  # when to open or close the peeking eye
+    eye_is_open: bool = False
+    spotted_time: float = -1.0
+
+
+# ---------------------------------------------------------------------------
+# Peek-back state (after fake-sleep freak-out)
+# ---------------------------------------------------------------------------
+
+PEEK_INSET = 14.0   # px from screen edge for the peek position
+
+@dataclass
+class PeekBackState:
+    peek_pos: Vector2
+    enter_pos: Vector2
+    face_dir: float         # direction facing inward at edge (degrees)
+    sweep_deg: float        # total sweep angle (25-65 deg)
+    stage: str = "peeking_in"
+    look_start_time: float = -1.0
+    look_duration: float = 8.8
+    walk_in_dist: float = -1.0
+    pause_start_time: float = -1.0
+    pause_duration: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -254,6 +377,10 @@ class Goose:
         self.task_nab_mouse: NabMouseState | None = None
         self.task_collect_window: CollectWindowState | None = None
         self.task_watch_mouse: WatchMouseState | None = None
+        self.task_follow_mouse: FollowMouseState | None = None
+        self.task_sneak_attack: SneakAttackState | None = None
+        self.task_sleep: SleepState | None = None
+        self.task_peek_back: PeekBackState | None = None
 
         # Window placed — watch for angry close
         self._placed_window = None
@@ -267,6 +394,11 @@ class Goose:
         self._target_sit_lerp = 0.0
         self._target_neck_tuck = 0.0
         self._freeze_position = False
+        self._freak_out_until = -1.0
+        self._freak_out_next_honk = -1.0
+        self._freak_bounce_a: Vector2 = Vector2.zero
+        self._freak_bounce_b: Vector2 = Vector2.zero
+        self._freak_bounce_to_a: bool = True
 
         self.sound = Sound(silence=config.silence_sounds if config else False)
         self.time_keeper = TimeKeeper()
@@ -285,6 +417,15 @@ class Goose:
         self._update_neck()
         self.rig.sit_lerp_percent       = lerp(self.rig.sit_lerp_percent,       self._target_sit_lerp,  0.06)
         self.rig.neck_tuck_lerp_percent = lerp(self.rig.neck_tuck_lerp_percent, self._target_neck_tuck, 0.06)
+        sleeping = (self.current_task == Task.SLEEP
+                    and self.task_sleep is not None
+                    and self.task_sleep.stage == SleepStage.SLEEPING)
+        self.rig.is_sleeping = sleeping
+        self.rig.show_sleep_bubbles = sleeping and (self.task_sleep is not None and not self.task_sleep.is_fake_sleep)
+        if not sleeping:
+            self.rig.peek_eye = 0
+        if sleeping:
+            self.rig.sleep_phase += DELTA_TIME
 
     def render(self, painter):
         render_foot_marks(painter, self.foot_marks, self.time_keeper.time)
@@ -314,6 +455,22 @@ class Goose:
 
         self._run_ai()
 
+        # Freak-out override: run away from mouse at charge speed, honking
+        t = self.time_keeper.time
+        if self._freak_out_until > 0 and t < self._freak_out_until:
+            bounce_target = self._freak_bounce_a if self._freak_bounce_to_a else self._freak_bounce_b
+            self.target_pos = bounce_target
+            if Vector2.distance(self.position, bounce_target) < 30.0:
+                self._freak_bounce_to_a = not self._freak_bounce_to_a
+            self._set_speed(SpeedTier.CHARGE)
+            self._freeze_position = False
+            if t >= self._freak_out_next_honk:
+                self.sound.honk()
+                self._freak_out_next_honk = t + 0.3
+        elif self._freak_out_until > 0:
+            self._freak_out_until = -1.0
+            self._set_task(Task.PEEK_BACK, honk=False)
+
         # Turn toward target (lerp angle 25% per frame)
         if not (to_target.x == 0.0 and to_target.y == 0.0):
             current_dir_vec = Vector2.get_from_angle_degrees(self.direction)
@@ -340,9 +497,14 @@ class Goose:
     # -----------------------------------------------------------------------
 
     def _get_foot_home(self, right_foot: bool) -> Vector2:
+        s = self.rig.sit_lerp_percent
         b = 1.0 if right_foot else 0.0
         side = Vector2.get_from_angle_degrees(self.direction + 90.0) * b
-        return self.position + side * FEET_DISTANCE_APART
+        # When crawling: reduce perpendicular spread and push feet downward so
+        # they poke below the lowered body in both left and right facing directions.
+        perp_dist  = lerp(FEET_DISTANCE_APART, 2.0, s)
+        crawl_drop = lerp(0.0, 8.0, s)
+        return self.position + side * perp_dist + Vector2(0.0, crawl_drop)
 
     def _solve_feet(self):
         t = self.time_keeper.time
@@ -415,6 +577,14 @@ class Goose:
             self._run_collect_window()
         elif self.current_task == Task.WATCH_MOUSE:
             self._run_watch_mouse()
+        elif self.current_task == Task.FOLLOW_MOUSE:
+            self._run_follow_mouse()
+        elif self.current_task == Task.SNEAK_ATTACK:
+            self._run_sneak_attack()
+        elif self.current_task == Task.SLEEP:
+            self._run_sleep()
+        elif self.current_task == Task.PEEK_BACK:
+            self._run_peek_back()
 
     # -----------------------------------------------------------------------
     # Placed window anger check
@@ -449,7 +619,12 @@ class Goose:
             mouse_pos = Vector2(float(cursor.x()), float(cursor.y()))
             goose_head = Vector2(self.position.x, self.position.y + 14.0)
             if Vector2.distance(goose_head, mouse_pos) < 30.0:
-                if (self.current_task == Task.WATCH_MOUSE
+                if (self.current_task == Task.SLEEP
+                        and self.task_sleep
+                        and self.task_sleep.stage == SleepStage.SLEEPING):
+                    self.sound.honk()
+                    self._set_task(Task.WANDER)
+                elif (self.current_task == Task.WATCH_MOUSE
                         and self.task_watch_mouse
                         and self.task_watch_mouse.sub_state == WatchSubState.SIT):
                     r = _random.random()
@@ -472,6 +647,11 @@ class Goose:
         self._target_sit_lerp = 0.0
         self._target_neck_tuck = 0.0
         self._freeze_position = False
+        self.rig.is_sleeping = False
+        self.rig.show_sleep_bubbles = False
+        self.rig.peek_eye = 0
+        self.rig.show_exclamation = False
+        self.rig.sleep_phase = 0.0
         self.current_task = task
         if honk:
             self.sound.honk()
@@ -500,6 +680,83 @@ class Goose:
             self._set_window_offset_for_direction(direction)
         elif task == Task.TRACK_MUD:
             self.task_track_mud = TrackMudState()
+        elif task == Task.FOLLOW_MOUSE:
+            self._set_speed(SpeedTier.RUN)
+            t = self.time_keeper.time
+            self.task_follow_mouse = FollowMouseState(
+                start_time=t,
+                boredom_time=t + random_range(FOLLOW_BOREDOM_MIN, FOLLOW_BOREDOM_MAX),
+                preferred_dist=random_range(FOLLOW_PREFERRED_DIST_MIN, FOLLOW_PREFERRED_DIST_MAX),
+                next_march_check_time=t + random_range(3.0, 6.0),
+            )
+        elif task == Task.SNEAK_ATTACK:
+            self._set_speed(SpeedTier.SNEAK)
+            t = self.time_keeper.time
+            self.task_sneak_attack = SneakAttackState(
+                start_time=t,
+                give_up_time=t + SNEAK_MAX_DURATION,
+            )
+        elif task == Task.SLEEP:
+            import random as _random
+            import math as _math
+            self._set_speed(SpeedTier.WALK)
+            corners = [
+                Vector2(SLEEP_CORNER_MARGIN, SLEEP_CORNER_MARGIN),
+                Vector2(self.screen_w - SLEEP_CORNER_MARGIN, SLEEP_CORNER_MARGIN),
+                Vector2(self.screen_w - SLEEP_CORNER_MARGIN, self.screen_h - SLEEP_CORNER_MARGIN),
+            ]
+            nest = corners[0] if DEV_FORCE_TASK else _random.choice(corners)
+            nest += Vector2(random_range(-15, 15), random_range(-15, 15))
+            self.task_sleep = SleepState(
+                nest_pos=nest,
+                spiral_start_angle=_random.uniform(0, 2 * _math.pi),
+            )
+            self.target_pos = nest
+        elif task == Task.PEEK_BACK:
+            import random as _random
+            import math as _math
+            self._set_speed(SpeedTier.SNEAK)
+            self.rig.sit_lerp_percent = 1.0
+            self.rig.neck_tuck_lerp_percent = 1.0
+            self._target_sit_lerp = 1.0
+            self._target_neck_tuck = 1.0
+            # Determine which screen edge is nearest and set peek/enter positions
+            edge_dists = {
+                'left':   self.position.x,
+                'right':  self.screen_w - self.position.x,
+                'top':    self.position.y,
+                'bottom': self.screen_h - self.position.y,
+            }
+            nearest = min(edge_dists, key=edge_dists.get)
+            cx, cy = self.screen_w / 2, self.screen_h / 2
+            diag = random_range(80, 180) * _random.choice([-1, 1])
+            if nearest == 'left':
+                peek_pos  = Vector2(PEEK_INSET, clamp(self.position.y, 80, self.screen_h - 80))
+                face_dir  = 0.0
+                enter_x   = random_range(150, self.screen_w / 2)
+                enter_pos = Vector2(enter_x, clamp(self.position.y + diag, 80, self.screen_h - 80))
+            elif nearest == 'right':
+                peek_pos  = Vector2(self.screen_w - PEEK_INSET, clamp(self.position.y, 80, self.screen_h - 80))
+                face_dir  = 180.0
+                enter_x   = random_range(self.screen_w / 2, self.screen_w - 150)
+                enter_pos = Vector2(enter_x, clamp(self.position.y + diag, 80, self.screen_h - 80))
+            elif nearest == 'top':
+                peek_pos  = Vector2(clamp(self.position.x, 80, self.screen_w - 80), PEEK_INSET)
+                face_dir  = 90.0
+                enter_y   = random_range(80, self.screen_h / 2)
+                enter_pos = Vector2(clamp(self.position.x + diag, 80, self.screen_w - 80), enter_y)
+            else:  # bottom
+                peek_pos  = Vector2(clamp(self.position.x, 80, self.screen_w - 80), self.screen_h - PEEK_INSET)
+                face_dir  = -90.0
+                enter_y   = random_range(self.screen_h / 2, self.screen_h - 80)
+                enter_pos = Vector2(clamp(self.position.x + diag, 80, self.screen_w - 80), enter_y)
+            self.task_peek_back = PeekBackState(
+                peek_pos=peek_pos,
+                enter_pos=enter_pos,
+                face_dir=face_dir,
+                sweep_deg=random_range(45.0, 150.0),
+            )
+            self.target_pos = peek_pos
         elif task == Task.WATCH_MOUSE:
             self._set_speed(SpeedTier.WALK)
             t = self.time_keeper.time
@@ -516,7 +773,7 @@ class Goose:
             return
         task = TASK_WEIGHTED_LIST[self.task_picker_deck.next()]
         # Skip unimplemented tasks — fall back to wander
-        if task not in (Task.WANDER, Task.TRACK_MUD, Task.NAB_MOUSE, Task.COLLECT_WINDOW_NOTEPAD, Task.COLLECT_WINDOW_MEME, Task.WATCH_MOUSE):
+        if task not in (Task.WANDER, Task.TRACK_MUD, Task.NAB_MOUSE, Task.COLLECT_WINDOW_NOTEPAD, Task.COLLECT_WINDOW_MEME, Task.WATCH_MOUSE, Task.FOLLOW_MOUSE, Task.SNEAK_ATTACK, Task.SLEEP):
             task = Task.WANDER
         # Respect attack_randomly config
         attack_ok = (self.config.attack_randomly if self.config else True)
@@ -765,6 +1022,314 @@ class Goose:
             if _random.random() < 0.30:
                 self.sound.honk()
             w.next_honk_time = t + random_range(WATCH_HONK_INTERVAL_MIN, WATCH_HONK_INTERVAL_MAX)
+
+    # -----------------------------------------------------------------------
+    # Task: FollowMouse
+    # -----------------------------------------------------------------------
+
+    def _run_follow_mouse(self):
+        import random as _random
+        t = self.time_keeper.time
+        f = self.task_follow_mouse
+        cursor_pos = self._get_cursor_pos()
+        to_cursor = cursor_pos - self.position
+        dist = Vector2.magnitude(to_cursor)
+
+        # Boredom timeout
+        if t >= f.boredom_time:
+            if _random.random() < FOLLOW_SNAP_GRAB_CHANCE:
+                self._set_task(Task.NAB_MOUSE)
+            else:
+                self._set_task(Task.WANDER)
+            return
+
+        FOLLOW_DEADBAND = 35.0
+
+        if f.stage == FollowMouseStage.RUSHING:
+            self._set_speed(SpeedTier.RUN)
+            if dist > 1.0:
+                self.target_pos = cursor_pos - Vector2.normalize(to_cursor) * f.preferred_dist
+            if dist <= f.preferred_dist + FOLLOW_DEADBAND:
+                f.stage = FollowMouseStage.FOLLOWING
+
+        elif f.stage == FollowMouseStage.FOLLOWING:
+            if dist < FOLLOW_FLEE_DIST:
+                # Too close — flee
+                flee_dir = Vector2.normalize(self.position - cursor_pos) if dist > 1.0 else Vector2(1.0, 0.0)
+                f.flee_target = self.position + flee_dir * 180.0
+                f.flee_until = t + FOLLOW_FLEE_DURATION
+                f.stage = FollowMouseStage.FLEEING
+            elif dist > f.preferred_dist + FOLLOW_DEADBAND:
+                # Drifted too far — walk back into range
+                self._set_speed(SpeedTier.WALK)
+                self._freeze_position = False
+                if dist > 1.0:
+                    self.target_pos = cursor_pos - Vector2.normalize(to_cursor) * f.preferred_dist
+            else:
+                # Comfortable zone — stop and face cursor
+                self._freeze_position = True
+                if dist > 1.0:
+                    self.target_pos = self.position + Vector2.normalize(to_cursor) * 50.0
+
+            # Honk march check — only trigger if no march is already running
+            march_active = f.honk_march_until > 0 and t < f.honk_march_until
+            if t >= f.next_march_check_time and not march_active:
+                f.next_march_check_time = t + HONK_MARCH_CHECK_INTERVAL + random_range(-1.0, 2.0)
+                if _random.random() < HONK_MARCH_CHANCE:
+                    f.honk_march_until = t + HONK_MARCH_DURATION
+                    f.next_march_honk_time = t
+
+            # Execute honk march
+            if f.honk_march_until > 0 and t < f.honk_march_until:
+                if t >= f.next_march_honk_time:
+                    self.sound.honk()
+                    f.next_march_honk_time = t + HONK_MARCH_RATE
+
+        elif f.stage == FollowMouseStage.FLEEING:
+            self._freeze_position = False
+            self._set_speed(SpeedTier.RUN)
+            self.target_pos = f.flee_target
+            if t >= f.flee_until:
+                f.stage = FollowMouseStage.FOLLOWING
+
+    # -----------------------------------------------------------------------
+    # Task: SneakAttack
+    # -----------------------------------------------------------------------
+
+    def _run_sneak_attack(self):
+        t = self.time_keeper.time
+        s = self.task_sneak_attack
+        cursor_pos = self._get_cursor_pos()
+        to_cursor = cursor_pos - self.position
+        dist = Vector2.magnitude(to_cursor)
+
+        if s.stage == SneakAttackStage.SNEAKING:
+            # Give up if taking too long
+            if t >= s.give_up_time:
+                self._set_task(Task.WANDER)
+                return
+
+            self._set_speed(SpeedTier.SNEAK)
+            self._target_sit_lerp = 1.0
+            self._target_neck_tuck = 1.0
+            if dist > 1.0:
+                self.target_pos = cursor_pos
+
+            if dist < SNEAK_STRIKE_DIST:
+                # Pounce!
+                self._target_sit_lerp = 0.0
+                self._target_neck_tuck = 0.0
+                self._set_speed(SpeedTier.CHARGE)
+                s.stage = SneakAttackStage.POUNCING
+                s.next_honk_time = t
+
+        elif s.stage == SneakAttackStage.POUNCING:
+            self._set_speed(SpeedTier.CHARGE)
+            beak_tip = self.rig.head2_end_point
+            self.target_pos = cursor_pos - (beak_tip - self.position)
+
+            # Honk while charging
+            if t >= s.next_honk_time:
+                self.sound.honk()
+                s.next_honk_time = t + SNEAK_HONK_RATE
+
+            if Vector2.distance(beak_tip, cursor_pos) < MOUSE_GRAB_DISTANCE:
+                s.original_vector_to_mouse = cursor_pos - beak_tip
+                s.grabbed_time = t
+                drag_to = Vector2(self.position.x, self.position.y)
+                while Vector2.distance(drag_to, self.position) / 400.0 < 1.2:
+                    drag_to = Vector2(random_range(0, self.screen_w), random_range(0, self.screen_h))
+                s.drag_to = drag_to
+                self.target_pos = drag_to
+                self.sound.chomp()
+                s.stage = SneakAttackStage.DRAGGING
+
+            # Missed entirely — give up after charge window
+            if t >= s.give_up_time + SNEAK_MAX_DURATION:
+                self._set_task(Task.WANDER)
+
+        elif s.stage == SneakAttackStage.DRAGGING:
+            beak_tip = self.rig.head2_end_point
+            if Vector2.distance(self.position, s.drag_to) < MOUSE_DROP_DISTANCE:
+                release_cursor_clip()
+                s.stage = SneakAttackStage.DECELERATING
+            else:
+                p = min((t - s.grabbed_time) / MOUSE_SUCC_TIME, 1.0)
+                clip_vec = Vector2.lerp(s.original_vector_to_mouse, STRUGGLE_RANGE, p)
+                clip_x = beak_tip.x + clip_vec.x
+                clip_y = beak_tip.y + clip_vec.y
+                set_cursor_clip(clip_x, clip_y, abs(clip_vec.x), abs(clip_vec.y))
+
+            # Keep honking while dragging
+            if t >= s.next_honk_time:
+                self.sound.honk()
+                s.next_honk_time = t + SNEAK_HONK_RATE
+
+        elif s.stage == SneakAttackStage.DECELERATING:
+            mag = Vector2.magnitude(self.velocity)
+            if mag > 0.01:
+                self.target_pos = self.position + Vector2.normalize(self.velocity) * 5.0
+                self.velocity -= Vector2.normalize(self.velocity) * self.current_acceleration * 2.0 * DELTA_TIME
+            if mag < 80.0:
+                release_cursor_clip()
+                self._set_task(Task.WANDER)
+
+    # -----------------------------------------------------------------------
+    # Task: Sleep
+    # -----------------------------------------------------------------------
+    # Task: PeekBack
+    # -----------------------------------------------------------------------
+
+    def _run_peek_back(self):
+        import math as _math
+        t = self.time_keeper.time
+        s = self.task_peek_back
+
+        if s.stage == "peeking_in":
+            dist = Vector2.distance(self.position, s.peek_pos)
+            self._set_speed(SpeedTier.SNEAK if dist < 80.0 else SpeedTier.WALK)
+            self._target_sit_lerp = 1.0
+            self._target_neck_tuck = 1.0
+            self.target_pos = s.peek_pos
+            if dist < 12.0:
+                s.look_start_time = t
+                s.stage = "looking"
+                self.rig.sit_lerp_percent = 1.0
+                self.rig.neck_tuck_lerp_percent = 1.0
+                self._target_sit_lerp = 1.0
+                self._target_neck_tuck = 1.0
+
+        elif s.stage == "looking":
+            self._freeze_position = True
+            self._target_sit_lerp = 1.0
+            self._target_neck_tuck = 1.0
+            elapsed = t - s.look_start_time
+            # Sine sweep: one full left-right arc over look_duration
+            t_norm = clamp(elapsed / s.look_duration, 0.0, 1.0)
+            ramp = 0.18
+            ease_in  = clamp(t_norm / ramp, 0.0, 1.0)
+            ease_out = clamp((1.0 - t_norm) / ramp, 0.0, 1.0)
+            envelope = min(ease_in * ease_in * (3 - 2 * ease_in),
+                           ease_out * ease_out * (3 - 2 * ease_out))
+            sweep = _math.sin(t_norm * 2 * _math.pi) * (s.sweep_deg / 2.0) * envelope
+            target_dir = s.face_dir + sweep
+            rad = _math.radians(target_dir)
+            sweep_pt = self.position + Vector2(_math.cos(rad), _math.sin(rad)) * 300.0
+            # During fade-out, blend target toward enter_pos so direction is right for walking_in
+            exit_blend = clamp((t_norm - (1.0 - ramp)) / ramp, 0.0, 1.0)
+            self.target_pos = Vector2(
+                lerp(sweep_pt.x, s.enter_pos.x, exit_blend),
+                lerp(sweep_pt.y, s.enter_pos.y, exit_blend),
+            )
+            if elapsed >= s.look_duration:
+                self._freeze_position = False
+                s.stage = "walking_in"
+
+        elif s.stage == "walking_in":
+            self._set_speed(SpeedTier.SNEAK)
+            self.target_pos = s.enter_pos
+            dist_remaining = Vector2.distance(self.position, s.enter_pos)
+            if s.walk_in_dist < 0:
+                s.walk_in_dist = max(dist_remaining, 1.0)
+            progress = clamp(1.0 - dist_remaining / s.walk_in_dist, 0.0, 1.0)
+            self._target_sit_lerp  = 1.0 - progress
+            self._target_neck_tuck = 1.0 - progress
+            if dist_remaining < 12.0:
+                s.pause_start_time = t
+                s.pause_duration = random_range(0.5, 1.5)
+                s.stage = "pausing"
+
+        elif s.stage == "pausing":
+            self._freeze_position = True
+            if t - s.pause_start_time >= s.pause_duration:
+                self._set_task(Task.WANDER)
+
+    # -----------------------------------------------------------------------
+
+    def _run_sleep(self):
+        import math as _math
+        import random as _random
+        t = self.time_keeper.time
+        s = self.task_sleep
+
+        if s.stage == SleepStage.WALKING_TO_CORNER:
+            self._set_speed(SpeedTier.WALK)
+            self.target_pos = s.nest_pos
+            if Vector2.distance(self.position, s.nest_pos) < 8.0:
+                s.stage = SleepStage.CIRCLING
+
+        elif s.stage == SleepStage.CIRCLING:
+            self._set_speed(SpeedTier.SNEAK)
+            # Advance at constant 40px/s arc speed so target always stays ahead of goose
+            arc_len = max(SLEEP_CIRCLE_RADIUS * (1.0 - s.spiral_t) * 1.5 * 2 * _math.pi, 1.0)
+            s.spiral_t = min(s.spiral_t + (40.0 / arc_len) * DELTA_TIME, 1.0)
+            angle = s.spiral_start_angle + s.spiral_t * 1.5 * 2 * _math.pi
+            radius = SLEEP_CIRCLE_RADIUS * (1.0 - s.spiral_t)
+            self.target_pos = Vector2(
+                s.nest_pos.x + _math.cos(angle) * radius,
+                s.nest_pos.y + _math.sin(angle) * radius,
+            )
+            if s.spiral_t >= 0.6:
+                s.settle_start_time = t
+                s.stage = SleepStage.SETTLING
+
+        elif s.stage == SleepStage.SETTLING:
+            self._freeze_position = True
+            elapsed = t - s.settle_start_time
+            progress = clamp(elapsed / SLEEP_SETTLE_DURATION, 0.0, 1.0)
+            self._target_sit_lerp = progress
+            self._target_neck_tuck = progress
+
+            if elapsed >= SLEEP_SETTLE_DURATION:
+                s.wake_time = t + random_range(SLEEP_MIN_DURATION, SLEEP_MAX_DURATION)
+                s.is_fake_sleep = DEV_FORCE_FAKE_SLEEP or _random.random() < 0.15
+                if s.is_fake_sleep:
+                    s.next_eye_event_time = t + random_range(5.0, 15.0)
+                s.stage = SleepStage.SLEEPING
+
+        elif s.stage == SleepStage.SLEEPING:
+            self._freeze_position = True
+            self._target_sit_lerp = 1.0
+            self._target_neck_tuck = 1.0
+
+            if s.is_fake_sleep:
+                if not s.eye_is_open and t >= s.next_eye_event_time:
+                    self.rig.peek_eye = _random.choice([1, 2])
+                    s.eye_is_open = True
+                    s.next_eye_event_time = t + random_range(0.5, 2.5)
+                elif s.eye_is_open and t >= s.next_eye_event_time:
+                    self.rig.peek_eye = 0
+                    s.eye_is_open = False
+                    s.next_eye_event_time = t + random_range(5.0, 15.0)
+
+                if s.eye_is_open and s.spotted_time < 0 and Vector2.distance(self.position, self._get_cursor_pos()) < 150.0:
+                    s.spotted_time = t
+                if s.spotted_time > 0:
+                    self._freeze_position = True
+                    elapsed = t - s.spotted_time
+                    if elapsed < 0.75:
+                        # Phase 1: one eye open, no exclamation
+                        self.rig.show_exclamation = False
+                    elif elapsed < 1.5:
+                        # Phase 2: both eyes open + exclamation
+                        self.rig.peek_eye = 3
+                        self.rig.show_exclamation = True
+                    else:
+                        # Phase 3: run screaming
+                        mouse = self._get_cursor_pos()
+                        away = Vector2.normalize(self.position - mouse)
+                        perp = Vector2(-away.y, away.x)
+                        off_base = self.position + away * 400.0
+                        self._freak_bounce_a = off_base + perp * 70.0
+                        self._freak_bounce_b = off_base - perp * 70.0
+                        self._freak_bounce_to_a = True
+                        self._freak_out_until = t + 4.0
+                        self._freak_out_next_honk = t
+                        self._set_task(Task.WANDER, honk=False)
+                        return
+
+            if t >= s.wake_time:
+                self._set_task(Task.WANDER)
 
     # -----------------------------------------------------------------------
     # Task: TrackMud

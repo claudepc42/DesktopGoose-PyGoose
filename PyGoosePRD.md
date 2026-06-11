@@ -1,0 +1,1583 @@
+# PyGoose — Product Requirements Document
+**Version:** 1.1
+**Status:** Active Development
+**Source:** Reverse-engineered from decompiled Desktop Goose v0.31 (arkangel-dev/desktop-goose-source) + original PyGoose implementation
+
+---
+
+## 1. Project Overview
+
+PyGoose is a cross-platform, open-source reimplementation of samperson's Desktop Goose. It places a procedurally-animated goose on top of all windows on the user's desktop. The goose wanders autonomously, steals the cursor, tracks mud, and drags fake windows onto the screen. It supports user-customizable memes, notepad messages, and a plugin-based modding API.
+
+The original is closed-source, Windows-only, and unmaintained. This project recreates full feature parity and adds cross-platform support and a cleaner mod API.
+
+---
+
+## 2. Target Platforms
+
+| Platform | Status | Notes |
+|----------|--------|-------|
+| Windows 10/11 | Required | Primary target. Click-through overlay via Qt |
+| macOS 12+ | Required | Requires Accessibility permission prompt on first launch |
+| Linux (X11) | Required | Wayland unsupported by design; show error if Wayland detected with no XWayland |
+
+**Linux Wayland note:** Display an error dialog on startup if `WAYLAND_DISPLAY` is set and `DISPLAY` is not. Do not silently fail.
+
+---
+
+## 3. Technology Stack
+
+| Component | Choice | Rationale |
+|-----------|--------|-----------|
+| Language | Python 3.11+ | Cross-platform, readable, easy modding |
+| GUI / overlay | PyQt6 | Native transparent always-on-top windows, Qt painter for drawing |
+| Cursor control | `pyautogui` + platform ctypes | Cross-platform cursor position/move |
+| Sound | `pygame.mixer` | Cross-platform MP3/WAV, simple API |
+| Config | INI via `configparser` | Match original format, user-editable |
+| Packaging | PyInstaller | Single-folder distribution per platform |
+| Mod API | Python `importlib` plugins | Drop-in `.py` files, cleaner than DLL injection |
+
+---
+
+## 4. Repository Structure
+
+```
+pygoose/
+├── main.py                        # Entry point
+├── config.ini                     # User configuration file
+├── goose/
+│   ├── __init__.py
+│   ├── game.py                    # Main game loop (Init, Update, Render)
+│   ├── goose.py                   # TheGoose: state machine, physics, rendering
+│   ├── renderer.py                # Pure drawing functions (update_rig, render_goose, etc.)
+│   ├── config.py                  # GooseConfig: load/save config.ini
+│   ├── sound.py                   # Sound: honk, chomp, pat, mud squish
+│   ├── overlay.py                 # Transparent always-on-top Qt window
+│   ├── cursor.py                  # Platform cursor clip/release/query helpers
+│   ├── mod_loader.py              # Plugin discovery and loading
+│   └── windows/
+│       ├── __init__.py
+│       ├── notepad_window.py      # SimpleTextForm equivalent
+│       ├── meme_window.py         # SimpleImageForm equivalent
+│       └── movable_window.py      # Base movable/resizable window
+├── engine/
+│   ├── __init__.py
+│   ├── vector2.py                 # Vector2 math class
+│   ├── math_utils.py              # lerp, clamp, random_range
+│   ├── easings.py                 # All easing functions
+│   ├── deck.py                    # Shuffle-deck random selector
+│   ├── rig.py                     # Rig dataclass: all joint positions + animation state
+│   └── time_keeper.py             # Frame timer, delta time, elapsed time
+├── assets/
+│   ├── fonts/                     # .ttf/.otf handwriting fonts for notepad
+│   ├── sounds/
+│   │   ├── Honk1.mp3
+│   │   ├── Honk2.mp3
+│   │   ├── Honk3.mp3
+│   │   ├── Honk4.mp3
+│   │   ├── BITE.mp3
+│   │   ├── MudSquish.mp3
+│   │   ├── Music.mp3              # Optional background music
+│   │   ├── Pat1.wav
+│   │   ├── Pat2.wav
+│   │   └── Pat3.wav
+│   ├── images/
+│   │   └── memes/                 # User drops meme images/GIFs here
+│   └── text/
+│       └── notepad_messages/      # User drops .txt files here
+└── mods/                          # User mod folders go here
+    └── example_mod/
+        ├── mod.py
+        └── README.md
+```
+
+---
+
+## 5. Engine Layer (`engine/`)
+
+### 5.1 `vector2.py` — Vector2
+
+Exact port of the original `SamEngine.Vector2` struct. All operations must match precisely since the rig math depends on them.
+
+```python
+class Vector2:
+    x: float
+    y: float
+    zero = Vector2(0.0, 0.0)
+
+    # Operators: +, -, unary -, * (vec*vec), * (vec*float), / (vec/float)
+    # Static methods:
+    @staticmethod
+    def get_from_angle_degrees(angle: float) -> Vector2:
+        # angle * 0.0174532924  (deg2rad constant)
+        return Vector2(cos(angle * 0.0174532924), sin(angle * 0.0174532924))
+
+    @staticmethod
+    def distance(a, b) -> float: ...
+
+    @staticmethod
+    def lerp(a, b, p) -> Vector2: ...
+
+    @staticmethod
+    def dot(a, b) -> float: ...
+
+    @staticmethod
+    def normalize(a) -> Vector2:
+        # Guard: if x==0 and y==0, return Vector2.zero
+
+    @staticmethod
+    def magnitude(a) -> float: ...
+```
+
+### 5.2 `math_utils.py` — SamMath
+
+```python
+DEG2RAD = 0.0174532924
+RAD2DEG = 57.2957764
+
+def random_range(min: float, max: float) -> float:
+    return min + random.random() * (max - min)
+
+def lerp(a: float, b: float, p: float) -> float:
+    return a * (1.0 - p) + b * p
+
+def clamp(a: float, min_val: float, max_val: float) -> float:
+    return min(max(a, min_val), max_val)
+```
+
+Single shared `random.Random()` instance throughout the app.
+
+### 5.3 `easings.py` — Easing Functions
+
+Implement all of the following exactly as in the original `Easings.cs`. Only `CubicEaseInOut` and `ExponentialEaseOut` are used by the goose, but implement the full set for mod authors.
+
+Used by goose code:
+- `cubic_ease_in_out(p)` — foot movement animation
+- `exponential_ease_out(p)` — ESC quit progress bar
+
+Full list to implement:
+`linear`, `quadratic_ease_in/out/in_out`, `cubic_ease_in/out/in_out`,
+`quartic_ease_in/out/in_out`, `quintic_ease_in/out/in_out`,
+`sine_ease_in/out/in_out`, `circular_ease_in/out/in_out`,
+`exponential_ease_in/out/in_out`, `elastic_ease_in/out/in_out`,
+`back_ease_in/out/in_out`, `bounce_ease_in/out/in_out`
+
+### 5.4 `deck.py` — Shuffle Deck
+
+Fisher-Yates shuffle-on-exhaust deck. Exact behavior match is required because the task weighting depends on it.
+
+```python
+class Deck:
+    def __init__(self, length: int):
+        self.indices = list(range(length))
+        self._i = 0
+        self.reshuffle()
+
+    def reshuffle(self):
+        # Fisher-Yates: for i in range(length): swap indices[i] with indices[randint(0, i)]
+        # NOTE: original uses random_range(0, i) which can return i itself — preserve this
+
+    def next(self) -> int:
+        result = self.indices[self._i]
+        self._i += 1
+        if self._i >= len(self.indices):
+            self.reshuffle()
+            self._i = 0
+        return result
+```
+
+### 5.5 `time_keeper.py` — Time
+
+```python
+TARGET_FRAMERATE = 120          # Hz
+DELTA_TIME = 1.0 / 120.0       # 0.008333334 seconds — FIXED, not measured
+
+# time: float — seconds since app start, updated once per frame via time.perf_counter()
+# delta_time is ALWAYS 0.008333334 regardless of actual frame timing
+# This matches original exactly — the original uses a fixed delta
+```
+
+The game loop sleeps to target 120fps (`time.sleep(max(0, frame_deadline - time.perf_counter()))`). Delta time is always the fixed constant, not the measured frame time. This is how the original works and affects all physics values.
+
+---
+
+## 6. Configuration (`config.py` + `config.ini`)
+
+### 6.1 `config.ini` format
+
+```ini
+[Goose]
+Version=1
+EnableMods=False
+SilenceSounds=False
+Task_CanAttackMouse=True
+AttackRandomly=False
+UseCustomColors=False
+GooseColorBody=#ffffff
+GooseColorUnderbody=#d3d3d3
+GooseColorBeak=#ffa500
+MinWanderingTimeSeconds=20
+MaxWanderingTimeSeconds=40
+FirstWanderTimeSeconds=20
+NotepadFontSize=25
+```
+
+`Version` is a schema version integer. If the loaded version doesn't match the current app version, delete and regenerate with defaults. Show a messagebox warning the user.
+
+### 6.2 `GooseConfig` class
+
+```python
+@dataclass
+class GooseConfig:
+    version: int = 1
+    enable_mods: bool = False
+    silence_sounds: bool = False
+    task_can_attack_mouse: bool = True
+    attack_randomly: bool = False
+    use_custom_colors: bool = False
+    goose_color_body: str = "#ffffff"
+    goose_color_underbody: str = "#d3d3d3"
+    goose_color_beak: str = "#ffa500"
+    min_wandering_time_seconds: float = 20.0
+    max_wandering_time_seconds: float = 40.0
+    first_wander_time_seconds: float = 20.0
+    notepad_font_size: int = 25
+```
+
+If `config.ini` does not exist, create it silently with defaults (no messagebox). If config fails to parse, show messagebox, delete corrupt file, recreate with defaults.
+
+---
+
+## 7. Overlay Window (`overlay.py`)
+
+The overlay is a single frameless, transparent, always-on-top, click-through window covering the entire primary monitor.
+
+### 7.1 Qt window flags (all platforms)
+
+```python
+flags = (
+    Qt.WindowType.FramelessWindowHint |
+    Qt.WindowType.WindowStaysOnTopHint |
+    Qt.WindowType.Tool |              # hides from taskbar
+    Qt.WindowType.NoDropShadowWindowHint
+)
+setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)  # click-through
+```
+
+### 7.2 Platform-specific click-through
+
+**Windows:** Additionally call `SetWindowLong` with `WS_EX_LAYERED | WS_EX_TRANSPARENT` via ctypes after the window is shown. This is required — Qt's `WA_TransparentForMouseEvents` alone is insufficient on Windows for all click-through scenarios.
+
+```python
+import ctypes
+GWL_EXSTYLE = -20
+WS_EX_LAYERED = 0x00080000
+WS_EX_TRANSPARENT = 0x00000020
+
+hwnd = int(window.winId())
+style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style | WS_EX_LAYERED | WS_EX_TRANSPARENT)
+```
+
+**macOS:** `WA_TransparentForMouseEvents` is sufficient. Accessibility permission is required for cursor manipulation — detect and prompt on first use.
+
+**Linux/X11:** `WA_TransparentForMouseEvents` is sufficient. No extra steps.
+
+### 7.3 Window sizing
+
+Cover `QScreen.primaryScreen().geometry()` exactly. Do not use `availableGeometry()` (that excludes taskbar). The goose should be able to walk behind/under the taskbar visually — the taskbar will cover it naturally since it's a separate OS window.
+
+### 7.4 Render loop
+
+```
+Application.Idle equivalent:
+- QTimer with interval=0 (fires as fast as possible)
+- Each tick: time_keeper.tick(), game.update(), overlay.update() (calls repaint())
+- paintEvent(): game.render(painter)
+- After render, sleep remainder of frame budget to target 120fps
+```
+
+Use `QPainter` with `RenderHint.Antialiasing` enabled.
+
+---
+
+## 8. Goose Rendering — The Rig
+
+The goose is **100% procedurally drawn** using lines and ellipses. There are no sprite images. All shapes use round line caps.
+
+### 8.1 Rig dataclass (`engine/rig.py`)
+
+```python
+@dataclass
+class Rig:
+    # Animation lerp values (0.0=relaxed/standing, 1.0=extended/crouched)
+    neck_lerp_percent: float = 0.0       # 0.0=relaxed, 1.0=extended/running
+    sit_lerp_percent: float = 0.0        # 0.0=standing, 1.0=fully crouched/sitting
+    neck_tuck_lerp_percent: float = 0.0  # 0.0=normal neck, 1.0=head tucked down (crawl)
+
+    # Pose flags
+    is_sleeping: bool = False            # True only during SleepStage.SLEEPING
+    show_sleep_bubbles: bool = False     # True only during real (non-fake) sleep
+    peek_eye: int = 0                    # 0=no eyes, 1=left eye only, 2=right eye only, 3=both eyes
+    show_exclamation: bool = False       # True during fake-sleep freak-out phase 2
+
+    # Sleep bubble animation phase (accumulates DELTA_TIME while sleeping)
+    sleep_phase: float = 0.0
+
+    # Joint positions (updated each frame by update_rig)
+    underbody_center: Vector2 = field(default_factory=lambda: Vector2(0.0, 0.0))
+    body_center: Vector2 = field(default_factory=lambda: Vector2(0.0, 0.0))
+    neck_center: Vector2 = field(default_factory=lambda: Vector2(0.0, 0.0))
+    neck_base: Vector2 = field(default_factory=lambda: Vector2(0.0, 0.0))
+    neck_head_point: Vector2 = field(default_factory=lambda: Vector2(0.0, 0.0))
+    head1_end_point: Vector2 = field(default_factory=lambda: Vector2(0.0, 0.0))
+    head2_end_point: Vector2 = field(default_factory=lambda: Vector2(0.0, 0.0))
+```
+
+### 8.2 `update_rig(position, direction, rig)` — exact math
+
+`sit_lerp_percent` and `neck_tuck_lerp_percent` from the Rig are factored in:
+
+```python
+UP = Vector2(0.0, -1.0)
+fwd = Vector2.get_from_angle_degrees(direction)
+s = rig.sit_lerp_percent
+tuck = rig.neck_tuck_lerp_percent
+
+# Body lowers when sitting/crouching
+rig.underbody_center = position + UP * lerp(9.0, 1.0, s)
+rig.body_center      = position + UP * lerp(14.0, 4.0, s)
+
+# Neck height and forward offset interpolate with both lerps
+neck_height  = int(lerp(lerp(20.0, 10.0, rig.neck_lerp_percent), 6.0,  tuck))
+neck_forward = int(lerp(lerp(3.0,  16.0, rig.neck_lerp_percent), 2.0,  tuck))
+
+rig.neck_center     = position + UP * (14 + neck_height)
+rig.neck_base       = rig.body_center + fwd * 15.0
+rig.neck_head_point = rig.neck_base + fwd * neck_forward + UP * neck_height
+
+rig.head1_end_point = rig.neck_head_point + fwd * 3.0 - UP * 1.0
+rig.head2_end_point = rig.head1_end_point + fwd * 5.0
+```
+
+### 8.3 `render_goose(painter, rig, position, direction, l_foot_pos, r_foot_pos, config)` — draw order and exact sizes
+
+Draw order (back to front):
+
+1. **Shadow** — hatched dark gray ellipse under body: center=(pos.x, pos.y), radii=(20, 15). Use `Qt.BrushStyle.Dense4Pattern` at color `QColor(80, 80, 80, 80)`. Drawn with `fillEllipse`.
+2. **Feet** — two filled orange circles, radius=4, at `l_foot_pos` and `r_foot_pos`. Color matches `beak_color`.
+3. **Outline layer** (LightGray, drawn first so white overwrites):
+   - Underbody line: LightGray, width=15, from `underbody_center + fwd*7` to `underbody_center - fwd*7`
+   - Body line: LightGray, width=24, from `body_center + fwd*11` to `body_center - fwd*11`
+   - Neck line: LightGray, width=15, from `neck_base` to `neck_head_point`
+   - Head1 line: LightGray, width=17, from `neck_head_point` to `head1_end_point`
+   - Head2 line: LightGray, width=12, from `head1_end_point` to `head2_end_point`
+4. **White fill layer** (overwrites outline):
+   - Body line: White, width=22
+   - Neck line: White, width=13
+   - Head1 line: White, width=15
+   - Head2 line: White, width=10
+5. **Beak** — Orange, width=11, from `head2_end_point` to `head2_end_point + fwd*5`
+6. **Eyes** — controlled by `rig.peek_eye` and `rig.is_sleeping`:
+   - `left_eye  = neck_head_point + UP*3 - right*b.x*3 + fwd*5`  where `b = Vector2(1.3, 0.4)`
+   - `right_eye = neck_head_point + UP*3 + right*b.x*3 + fwd*5`
+   - Both eyes drawn if `not rig.is_sleeping or rig.peek_eye == 3`
+   - Left eye only if `rig.peek_eye == 1`
+   - Right eye only if `rig.peek_eye == 2`
+   - No eyes if `rig.is_sleeping` and `rig.peek_eye == 0`
+7. **Sleep bubbles** — drawn if `rig.show_sleep_bubbles` (see §8.4)
+8. **Exclamation mark** — drawn if `rig.show_exclamation` (see §8.5)
+
+All lines use `Qt.PenCapStyle.RoundCap` and `Qt.PenJoinStyle.RoundJoin`.
+
+**Custom colors:** When `UseCustomColors=True`, replace body color with `GooseColorBody`, outline color with `GooseColorUnderbody`, and beak/feet color with `GooseColorBeak`.
+
+**Foot marks** are rendered separately via `render_foot_marks()` before `render_goose()` is called (see §10.3).
+
+### 8.4 Sleep bubbles (`_render_sleep_bubbles`)
+
+Three animated "z" bubbles float upward from above the head. Each has a staggered phase offset.
+
+```python
+base = rig.neck_head_point + UP * 10.0
+configs = [
+    {"offset": 0.0, "x_drift":  6.0, "max_r": 3.5},
+    {"offset": 1.0, "x_drift": 11.0, "max_r": 5.0},
+    {"offset": 2.0, "x_drift": 15.0, "max_r": 6.5},
+]
+cycle = 3.0   # seconds per bubble cycle
+rise  = 28.0  # px of upward travel
+
+for cfg in configs:
+    p = ((rig.sleep_phase + cfg["offset"]) % cycle) / cycle   # 0→1
+    # Fade out in second half of cycle
+    alpha = int(clamp(lerp(220, 0, max(0.0, (p - 0.5) * 2.0)), 0, 255))
+    r   = lerp(1.5, cfg["max_r"], p)
+    pos = Vector2(base.x + cfg["x_drift"], base.y - p * rise)
+    color   = QColor(255, 255, 255, alpha)
+    outline = QColor(160, 200, 255, alpha)
+```
+
+### 8.5 Exclamation mark (`_render_exclamation`)
+
+Yellow anime-style "!" drawn above the head during fake-sleep freak-out phase 2.
+
+```python
+base = rig.neck_head_point + UP * 22.0
+# Vertical bar: tall thin rounded rect
+bar = QRectF(base.x - 3.5, base.y - 14.0, 7.0, 10.0)
+painter.drawRoundedRect(bar, 2.0, 2.0)    # yellow fill, black outline (width=1.5)
+# Dot below
+painter.drawEllipse(QPointF(base.x, base.y), 3.5, 3.5)
+
+COLOR_YELLOW = QColor(0xFF, 0xE0, 0x00)
+```
+
+### 8.6 Neck lerp behavior
+
+```python
+# Each frame (in tick()):
+target_neck = 1.0 if (override_extend_neck or current_speed >= 200.0) else 0.0
+rig.neck_lerp_percent = lerp(rig.neck_lerp_percent, target_neck, 0.075)
+
+# sit_lerp_percent and neck_tuck_lerp_percent are lerped toward _target_sit_lerp
+# and _target_neck_tuck at rate 0.06 per frame:
+rig.sit_lerp_percent       = lerp(rig.sit_lerp_percent,       _target_sit_lerp,  0.06)
+rig.neck_tuck_lerp_percent = lerp(rig.neck_tuck_lerp_percent, _target_neck_tuck, 0.06)
+```
+
+`override_extend_neck` is set to `True` during `CollectWindow.DraggingWindowBack` task and during `SNEAK_ATTACK.POUNCING`/`DRAGGING` stages.
+
+---
+
+## 9. Goose Physics and Movement
+
+### 9.1 Speed tiers
+
+```python
+class SpeedTier(Enum):
+    SNEAK  = "sneak"
+    WALK   = "walk"
+    RUN    = "run"
+    CHARGE = "charge"
+
+SPEEDS = {
+    SpeedTier.SNEAK:  {"speed": 28.0,  "acceleration": 600.0,  "step_time": 0.45},
+    SpeedTier.WALK:   {"speed": 80.0,  "acceleration": 1300.0, "step_time": 0.2},
+    SpeedTier.RUN:    {"speed": 200.0, "acceleration": 1300.0, "step_time": 0.2},
+    SpeedTier.CHARGE: {"speed": 400.0, "acceleration": 2300.0, "step_time": 0.1},
+}
+```
+
+`SNEAK` is used during fake-sleep post-freak-out peek behavior, sneak attack approach, and sleep circling. Slow speed (28px/s), wide step timing (0.45s), produces a careful creeping walk.
+
+### 9.2 Physics update (called every frame, `DELTA_TIME = 0.008333334`)
+
+```python
+# 1. Compute target_direction (normalized vector toward target_pos)
+to_target = Vector2.normalize(target_pos - position)
+
+# 2. Run AI (updates target_pos, may set override_extend_neck, _freeze_position)
+run_ai()
+
+# 3. Freak-out override (see §9.4) — overrides target_pos and speed if active
+
+# 4. Turn toward target (lerp angle, 25% per frame)
+current_dir_vec = Vector2.get_from_angle_degrees(direction)
+blended = Vector2.lerp(current_dir_vec, to_target, 0.25)
+direction = degrees(atan2(blended.y, blended.x))
+
+# 5. If _freeze_position: zero velocity, return early
+if _freeze_position:
+    velocity = Vector2.zero
+    return
+
+# 6. Cap velocity to current_speed
+if Vector2.magnitude(velocity) > current_speed:
+    velocity = Vector2.normalize(velocity) * current_speed
+
+# 7. Accelerate toward target
+velocity += Vector2.normalize(target_pos - position) * current_acceleration * DELTA_TIME
+
+# 8. Integrate position
+position += velocity * DELTA_TIME
+```
+
+### 9.3 `_freeze_position` flag
+
+When `_freeze_position = True`, the physics integration step is skipped (velocity zeroed, position unchanged). The direction lerp still runs so the goose can face its target while standing still. Tasks use this flag to hold the goose in place during e.g. watching, sleeping, or sweeping.
+
+### 9.4 Freak-out override
+
+When the goose is caught fake-sleeping, it transitions to a 4-second freak-out before returning. This is implemented as a physics-layer override that runs in `_run_physics` after the AI dispatcher, so it takes full control regardless of the current task.
+
+```python
+# Two bounce points 400px away from the goose (in the direction away from mouse),
+# offset ±70px perpendicular:
+away = Vector2.normalize(position - mouse_pos)
+perp = Vector2(-away.y, away.x)
+off_base = position + away * 400.0
+_freak_bounce_a = off_base + perp * 70.0
+_freak_bounce_b = off_base - perp * 70.0
+
+# Each frame while freak-out is active:
+if _freak_out_until > 0 and t < _freak_out_until:
+    bounce_target = _freak_bounce_a if _freak_bounce_to_a else _freak_bounce_b
+    target_pos = bounce_target
+    if distance(position, bounce_target) < 30.0:
+        _freak_bounce_to_a = not _freak_bounce_to_a    # toggle target
+    _set_speed(SpeedTier.CHARGE)
+    _freeze_position = False
+    if t >= _freak_out_next_honk:
+        sound.honk()
+        _freak_out_next_honk = t + 0.3    # honk every 0.3 seconds
+
+# When freak-out expires:
+elif _freak_out_until > 0:
+    _freak_out_until = -1.0
+    _set_task(Task.PEEK_BACK, honk=False)
+```
+
+### 9.5 Petting detection
+
+```python
+# In tick(), before running AI:
+mouse_down = is_left_mouse_down()
+if mouse_down and not last_frame_mouse_button_pressed:
+    cursor_pos = QCursor.pos()
+    goose_head = Vector2(position.x, position.y + 14.0)
+    if distance(goose_head, cursor_pos) < 30.0:
+        if current_task == Task.SLEEP and task_sleep.stage == SleepStage.SLEEPING:
+            # Clicking sleeping goose wakes it with a honk
+            sound.honk()
+            set_task(Task.WANDER)
+        elif current_task == Task.WATCH_MOUSE and sub_state == WatchSubState.SIT:
+            r = random()
+            if r < 0.70:   sound.honk()
+            elif r < 0.90: set_task(Task.WANDER)
+            else:           set_task(Task.NAB_MOUSE)
+        else:
+            set_task(Task.NAB_MOUSE)
+last_frame_mouse_button_pressed = mouse_down
+```
+
+---
+
+## 10. Footmarks
+
+### 10.1 Ring buffer
+
+```python
+FOOT_MARK_BUFFER_SIZE = 64
+
+@dataclass
+class FootMark:
+    position: Vector2 = Vector2.zero
+    time: float = 0.0             # timestamp when mark was placed
+
+foot_marks: list[FootMark] = [FootMark() for _ in range(64)]
+foot_mark_index: int = 0          # wraps around
+```
+
+### 10.2 Placement
+
+A footmark is placed whenever a foot completes a step AND `time.time < track_mud_end_time`.
+
+```python
+def add_foot_mark(pos: Vector2):
+    foot_marks[foot_mark_index].time = time.time
+    foot_marks[foot_mark_index].position = pos
+    foot_mark_index = (foot_mark_index + 1) % FOOT_MARK_BUFFER_SIZE
+```
+
+### 10.3 Rendering
+
+```python
+FOOT_MARK_LIFETIME = 8.5    # seconds before shrink begins
+FOOT_MARK_SHRINK_TIME = 1.0 # seconds to shrink from radius 3 to 0
+
+for mark in foot_marks:
+    if mark.time == 0.0:
+        continue
+    shrink_start = mark.time + FOOT_MARK_LIFETIME
+    p = clamp((time.time - shrink_start) / FOOT_MARK_SHRINK_TIME, 0.0, 1.0)
+    radius = lerp(3.0, 0.0, p)
+    if radius > 0:
+        painter.drawEllipse(center=mark.position, radius=radius, color=SaddleBrown)
+```
+
+---
+
+## 11. Foot Solver
+
+Feet are solved using a two-foot IK system that alternates steps.
+
+### 11.1 Foot home position
+
+The foot home adapts to the crawl/sit pose via `rig.sit_lerp_percent`:
+
+```python
+FEET_DISTANCE_APART = 6.0
+OVERSHOOT_FRACTION = 0.4
+WANT_STEP_AT_DISTANCE = 5.0
+
+def get_foot_home(right_foot: bool) -> Vector2:
+    s = rig.sit_lerp_percent
+    b = 1.0 if right_foot else 0.0
+    side = Vector2.get_from_angle_degrees(direction + 90.0) * b
+    # When crawling: reduce perpendicular spread and push feet downward
+    perp_dist  = lerp(FEET_DISTANCE_APART, 2.0, s)
+    crawl_drop = lerp(0.0, 8.0, s)
+    return position + side * perp_dist + Vector2(0.0, crawl_drop)
+```
+
+### 11.2 Step logic (called every frame)
+
+Only one foot moves at a time. Steps alternate: when neither foot is moving, check left foot first.
+
+```python
+if l_foot_move_time_start < 0 and r_foot_move_time_start < 0:
+    # Check if left foot needs to step
+    if distance(l_foot_pos, get_foot_home(False)) > WANT_STEP_AT_DISTANCE:
+        l_foot_move_origin = l_foot_pos
+        l_foot_move_dir = normalize(get_foot_home(False) - l_foot_pos)
+        l_foot_move_time_start = time.time
+    # Else check right foot
+    elif distance(r_foot_pos, get_foot_home(True)) > WANT_STEP_AT_DISTANCE:
+        r_foot_move_origin = r_foot_pos
+        r_foot_move_dir = normalize(get_foot_home(True) - r_foot_pos)
+        r_foot_move_time_start = time.time
+
+elif l_foot_move_time_start > 0:
+    target = get_foot_home(False) + l_foot_move_dir * OVERSHOOT_FRACTION * 5.0
+    elapsed = time.time - l_foot_move_time_start
+    if elapsed <= step_time:
+        p = elapsed / step_time
+        l_foot_pos = Vector2.lerp(l_foot_move_origin, target, cubic_ease_in_out(p))
+    else:
+        l_foot_pos = target
+        l_foot_move_time_start = -1.0
+        sound.play_pat()
+        if time.time < track_mud_end_time:
+            add_foot_mark(l_foot_pos)
+
+elif r_foot_move_time_start > 0:
+    # (same as left)
+```
+
+`step_time` comes from the current speed tier (0.45 for Sneak, 0.2 for Walk/Run, 0.1 for Charge).
+
+---
+
+## 12. Task System
+
+### 12.1 Task enum
+
+```python
+class Task(Enum):
+    WANDER                  = "wander"
+    NAB_MOUSE               = "nab_mouse"
+    COLLECT_WINDOW_MEME     = "collect_window_meme"
+    COLLECT_WINDOW_NOTEPAD  = "collect_window_notepad"
+    COLLECT_WINDOW_EXEC     = "collect_window_exec"   # internal, not picked directly
+    TRACK_MUD               = "track_mud"
+    WATCH_MOUSE             = "watch_mouse"
+    FOLLOW_MOUSE            = "follow_mouse"
+    SNEAK_ATTACK            = "sneak_attack"
+    SLEEP                   = "sleep"
+    PEEK_BACK               = "peek_back"             # internal, triggered by fake-sleep freak-out
+```
+
+**PEEK_BACK** is never picked from the weighted list — it is only triggered automatically at the end of a fake-sleep freak-out sequence.
+
+### 12.2 Weighted task list and deck
+
+```python
+TASK_WEIGHTED_LIST = [
+    Task.TRACK_MUD,                 # 2/14
+    Task.TRACK_MUD,
+    Task.COLLECT_WINDOW_MEME,       # 2/14
+    Task.COLLECT_WINDOW_MEME,
+    Task.COLLECT_WINDOW_NOTEPAD,    # 1/14
+    Task.NAB_MOUSE,                 # 3/14
+    Task.NAB_MOUSE,
+    Task.NAB_MOUSE,
+    Task.WATCH_MOUSE,               # 2/14
+    Task.WATCH_MOUSE,
+    Task.FOLLOW_MOUSE,              # 2/14
+    Task.FOLLOW_MOUSE,
+    Task.SNEAK_ATTACK,              # 1/14
+    Task.SLEEP,                     # 1/14
+]
+# 14 entries total
+
+task_picker_deck = Deck(len(TASK_WEIGHTED_LIST))
+```
+
+### 12.3 `choose_next_task()`
+
+```python
+def choose_next_task():
+    if DEV_FORCE_TASK:
+        set_task(Task(DEV_FORCE_TASK))
+        return
+
+    task = TASK_WEIGHTED_LIST[task_picker_deck.next()]
+
+    # Skip any unimplemented tasks (fall back to wander)
+    if task not in implemented_tasks:
+        task = Task.WANDER
+
+    # If AttackRandomly=False, skip NabMouse picks
+    if not config.attack_randomly and task == Task.NAB_MOUSE:
+        task = Task.WANDER
+
+    set_task(task)
+```
+
+### 12.4 `_set_task(task, honk=True)` — common reset
+
+Every task transition resets these Rig fields and flags:
+
+```python
+override_extend_neck = False
+_target_sit_lerp = 0.0
+_target_neck_tuck = 0.0
+_freeze_position = False
+rig.is_sleeping = False
+rig.show_sleep_bubbles = False
+rig.peek_eye = 0
+rig.show_exclamation = False
+rig.sleep_phase = 0.0
+current_task = task
+if honk:
+    sound.honk()
+# Then initialize task-specific state...
+```
+
+---
+
+## 13. Task: Wander
+
+```python
+@dataclass
+class WanderState:
+    wander_start_time: float
+    wander_duration: float
+    pause_start_time: float = -1.0
+    pause_duration: float = 0.0
+
+# Duration constants:
+MIN_PAUSE = 1.0       # seconds
+MAX_PAUSE = 2.0       # seconds
+GOOD_ENOUGH_DIST = 20.0
+
+def get_random_wander_duration() -> float:
+    if DEV_SHORT_WANDER:
+        return 3.0
+    return random_range(config.min_wandering_time_seconds, config.max_wandering_time_seconds)
+```
+
+```python
+def run_wander():
+    # If wander duration expired, choose next task
+    if t - task_wander.wander_start_time > task_wander.wander_duration:
+        choose_next_task()
+        return
+
+    if task_wander.pause_start_time > 0.0:
+        if t - task_wander.pause_start_time > task_wander.pause_duration:
+            task_wander.pause_start_time = -1.0
+            walk_time = random_range(1.0, 6.0)
+            max_walk_dist = walk_time * current_speed
+            new_target = Vector2(random_range(0, screen_w), random_range(0, screen_h))
+            if distance(position, new_target) > max_walk_dist:
+                new_target = position + normalize(new_target - position) * max_walk_dist
+            target_pos = new_target
+        else:
+            velocity = Vector2.zero   # freeze during pause
+    else:
+        if distance(position, target_pos) < GOOD_ENOUGH_DIST:
+            task_wander.pause_start_time = t
+            task_wander.pause_duration = random_range(1.0, 2.0)
+```
+
+---
+
+## 14. Task: NabMouse
+
+Three stages: `SEEKING_MOUSE` → `DRAGGING_MOUSE_AWAY` → `DECELERATING`
+
+```python
+MOUSE_GRAB_DISTANCE = 15.0    # px, beak tip to cursor
+MOUSE_SUCC_TIME = 0.06        # seconds to transition clamp rect
+MOUSE_DROP_DISTANCE = 30.0    # px, when to release
+GIVE_UP_TIME = 9.0            # seconds before goose gives up chasing
+STRUGGLE_RANGE = Vector2(3.0, 3.0)
+```
+
+```python
+def run_nab_mouse():
+    cursor_pos = get_cursor_pos()
+    beak_tip = rig.head2_end_point
+
+    if stage == SEEKING_MOUSE:
+        set_speed(CHARGE)
+        target_pos = cursor_pos - (beak_tip - position)
+
+        if distance(beak_tip, cursor_pos) < MOUSE_GRAB_DISTANCE:
+            original_vector_to_mouse = cursor_pos - beak_tip
+            grabbed_time = t
+            # Pick drag destination at least 1.2 charge-seconds away
+            drag_to = position
+            while distance(drag_to, position) / 400.0 < 1.2:
+                drag_to = Vector2(random() * screen_w, random() * screen_h)
+            target_pos = drag_to
+            sound.chomp()
+            stage = DRAGGING_MOUSE_AWAY
+
+        if t > chase_start_time + GIVE_UP_TIME:
+            stage = DECELERATING
+
+    elif stage == DRAGGING_MOUSE_AWAY:
+        if distance(position, target_pos) < MOUSE_DROP_DISTANCE:
+            release_cursor_clip()
+            stage = DECELERATING
+        else:
+            p = min((t - grabbed_time) / MOUSE_SUCC_TIME, 1.0)
+            clip_vec = Vector2.lerp(original_vector_to_mouse, STRUGGLE_RANGE, p)
+            set_cursor_clip(beak_tip.x + clip_vec.x, beak_tip.y + clip_vec.y,
+                            abs(clip_vec.x), abs(clip_vec.y))
+
+    elif stage == DECELERATING:
+        target_pos = position + normalize(velocity) * 5.0
+        velocity -= normalize(velocity) * current_acceleration * 2.0 * DELTA_TIME
+        if magnitude(velocity) < 80.0:
+            release_cursor_clip()
+            set_task(Task.WANDER)
+```
+
+### 14.1 Platform cursor clip implementations
+
+**Windows:** `ctypes.windll.user32.ClipCursor(ctypes.byref(RECT(left, top, right, bottom)))`. Release with `ClipCursor(None)`.
+
+**macOS:** No `ClipCursor` equivalent. Simulate by moving cursor to beak tip every frame via `pyautogui.moveTo()`.
+
+**Linux:** Use `XGrabPointer` or the macOS simulation approach with `Xlib`.
+
+---
+
+## 15. Task: CollectWindow (Meme + Notepad)
+
+### 15.1 Stages
+
+`WALKING_OFFSCREEN` → `WAITING_TO_BRING_WINDOW_BACK` → `DRAGGING_WINDOW_BACK`
+
+```python
+WAIT_TIME_MIN = 2.0
+WAIT_TIME_MAX = 3.5
+```
+
+### 15.2 `_set_target_offscreen()`
+
+```python
+def _set_target_offscreen() -> ScreenDirection:
+    if position.x > screen_w / 2:
+        target_pos = Vector2(screen_w + 50, lerp(position.y, screen_h / 2, 0.4))
+        return ScreenDirection.RIGHT
+    else:
+        target_pos = Vector2(-50, lerp(position.y, screen_h / 2, 0.4))
+        return ScreenDirection.LEFT
+```
+
+### 15.3 Window offset (beak attachment point)
+
+```python
+if direction == ScreenDirection.LEFT:
+    window_offset_to_beak = Vector2(window_width, window_height / 2)
+elif direction == ScreenDirection.TOP:
+    window_offset_to_beak = Vector2(window_width / 2, window_height)
+elif direction == ScreenDirection.RIGHT:
+    window_offset_to_beak = Vector2(0, window_height / 2)
+```
+
+### 15.4 `run_collect_window()`
+
+```python
+def run_collect_window():
+    if stage == WALKING_OFFSCREEN:
+        if distance(position, target_pos) < 5.0:
+            secs_to_wait = random_range(WAIT_TIME_MIN, WAIT_TIME_MAX)
+            wait_start_time = t
+            stage = WAITING_TO_BRING_WINDOW_BACK
+
+    elif stage == WAITING_TO_BRING_WINDOW_BACK:
+        velocity = Vector2.zero
+        if t - wait_start_time > secs_to_wait:
+            # Show the window via queued Qt invoke (thread-safe)
+            QMetaObject.invokeMethod(main_window, "show_dialog", QueuedConnection)
+            main_window.closing.connect(on_window_closed_early)
+            # Set target near window entry side
+            ...
+            stage = DRAGGING_WINDOW_BACK
+
+    elif stage == DRAGGING_WINDOW_BACK:
+        if distance(position, target_pos) < 5.0:
+            # Place window — notepad watches forever, meme has 3-second anger window
+            _placed_window = main_window
+            _placed_window_permanent = isinstance(main_window, NotepadWindow)
+            set_task(Task.WANDER)
+            return
+
+        override_extend_neck = True
+        window_pos = rig.head2_end_point - window_offset_to_beak
+        main_window.move_threadsafe(int(window_pos.x), int(window_pos.y))
+```
+
+### 15.5 Placed window anger
+
+After the window is placed, the goose watches it. If the user closes it:
+- **Notepad window**: goose attacks forever (no timeout) — gets angry any time it's closed
+- **Meme window**: goose gets angry only within 3 seconds of placing
+
+Both trigger `set_task(Task.NAB_MOUSE)`.
+
+---
+
+## 16. Task: TrackMud
+
+Three stages: `DECIDE_TO_RUN` → `RUNNING_OFFSCREEN` → `RUNNING_WANDERING`
+
+```python
+TRACK_MUD_DURATION = 15.0       # seconds of mud tracking
+DIR_CHANGE_INTERVAL = 100.0     # seconds (effectively never changes direction)
+AMOK_DURATION = 2.0             # seconds of manic running before slowing
+```
+
+```python
+def run_track_mud():
+    if stage == DECIDE_TO_RUN:
+        _set_target_offscreen()
+        set_speed(RUN)
+        stage = RUNNING_OFFSCREEN
+
+    elif stage == RUNNING_OFFSCREEN:
+        if distance(position, target_pos) < 5.0:
+            target_pos = Vector2(random(0, screen_w), random(0, screen_h))
+            next_dir_change_time = t + DIR_CHANGE_INTERVAL
+            time_to_stop_running = t + AMOK_DURATION
+            track_mud_end_time = t + TRACK_MUD_DURATION
+            stage = RUNNING_WANDERING
+            sound.play_mud_squish()
+
+    elif stage == RUNNING_WANDERING:
+        if distance(position, target_pos) < 5.0 or t > next_dir_change_time:
+            target_pos = Vector2(random(0, screen_w), random(0, screen_h))
+            next_dir_change_time = t + DIR_CHANGE_INTERVAL
+
+        if t > time_to_stop_running:
+            target_pos = Vector2(
+                clamp(position.x + 30.0, 55.0, screen_w - 55.0),
+                clamp(position.y + 3.0, 80.0, screen_h - 80.0),
+            )
+            set_task(Task.WANDER, honk=False)
+```
+
+`track_mud_end_time` is a float initialized to `-1.0`. Footmarks are added only while `t < track_mud_end_time`.
+
+---
+
+## 17. Task: WatchMouse
+
+The goose sits near the cursor and watches it. Transitions between sub-states every few seconds.
+
+```python
+WATCH_MOUSE_DURATION_MIN = 8.0
+WATCH_MOUSE_DURATION_MAX = 180.0
+BOB_INTERVAL_MIN = 1.2
+BOB_INTERVAL_MAX = 3.5
+BOB_DURATION = 0.35
+WATCH_HONK_INTERVAL_MIN = 5.0
+WATCH_HONK_INTERVAL_MAX = 12.0
+WATCH_SUB_DURATION_MIN = 2.0
+WATCH_SUB_DURATION_MAX = 5.0
+SIT_MIN_DURATION = 15.0     # goose will not leave SIT state before this long
+
+class WatchSubState(Enum):
+    STAND_STILL = "stand_still"
+    WALK_SLOW   = "walk_slow"
+    SIT         = "sit"
+
+@dataclass
+class WatchMouseState:
+    start_time: float
+    duration: float
+    next_bob_time: float
+    next_honk_time: float
+    bob_end_time: float = -1.0
+    sub_state: WatchSubState = WatchSubState.WALK_SLOW
+    next_sub_change_time: float = 0.0
+    sit_entered_time: float = -1.0
+```
+
+**Behavior per sub-state:**
+
+- `STAND_STILL`: `_freeze_position = True`, standing pose
+- `WALK_SLOW`: walk toward cursor at WALK speed if `dist > 60px`, otherwise freeze
+- `SIT`: `_freeze_position = True`, `_target_sit_lerp = 1.0` (crouches down)
+
+**Head bob:** Every `BOB_INTERVAL_MIN`–`BOB_INTERVAL_MAX` seconds (except while SIT), override neck extension for `BOB_DURATION` seconds to do a quick head bob.
+
+**Rare honk:** Every `WATCH_HONK_INTERVAL_MIN`–`WATCH_HONK_INTERVAL_MAX` seconds, 30% chance to actually honk.
+
+**Petting while sitting:** 70% honk, 20% wander away, 10% attack mouse.
+
+**Always faces cursor** by setting `target_pos = position + normalize(cursor - position) * 50.0`.
+
+---
+
+## 18. Task: FollowMouse
+
+The goose rushes to the cursor's preferred distance, then follows it. Can flee if cursor gets too close.
+
+```python
+FOLLOW_PREFERRED_DIST_MIN  = 90.0
+FOLLOW_PREFERRED_DIST_MAX  = 160.0
+FOLLOW_FLEE_DIST           = 45.0
+FOLLOW_FLEE_DURATION       = 1.5
+FOLLOW_BOREDOM_MIN         = 15.0
+FOLLOW_BOREDOM_MAX         = 30.0
+FOLLOW_SNAP_GRAB_CHANCE    = 0.05   # chance to transition to NAB_MOUSE on boredom
+HONK_MARCH_CHANCE          = 0.12   # chance per check to start a honk march
+HONK_MARCH_CHECK_INTERVAL  = 10.0
+HONK_MARCH_DURATION        = 2.5
+HONK_MARCH_RATE            = 0.38   # seconds between honks during march
+
+class FollowMouseStage(Enum):
+    RUSHING   = "rushing"
+    FOLLOWING = "following"
+    FLEEING   = "fleeing"
+```
+
+**Stages:**
+
+- `RUSHING`: CHARGE toward cursor's preferred distance; transitions to FOLLOWING once in range
+- `FOLLOWING`: Maintains preferred distance. Freezes when in comfortable zone (±35px deadband). Flees if cursor < 45px away. Occasionally starts a honk march (rapid honking for 2.5s). Returns to WALKING if drifts > preferred_dist + deadband.
+- `FLEEING`: Runs 180px away from cursor at RUN speed for 1.5s, then returns to FOLLOWING
+
+**Boredom:** After 15–30 seconds, 5% chance to snap into NAB_MOUSE, otherwise wander.
+
+---
+
+## 19. Task: SneakAttack
+
+The goose crouches low (crawl pose) and sneaks toward the cursor. Pounces and grabs when close enough.
+
+```python
+SNEAK_STRIKE_DIST  = 65.0   # px to trigger pounce
+SNEAK_MAX_DURATION = 44.0   # seconds before giving up
+SNEAK_HONK_RATE    = 0.32   # seconds between honks during pounce/drag
+
+class SneakAttackStage(Enum):
+    SNEAKING     = "sneaking"
+    POUNCING     = "pouncing"
+    DRAGGING     = "dragging"
+    DECELERATING = "decelerating"
+```
+
+**Stages:**
+
+- `SNEAKING`: SNEAK speed, `_target_sit_lerp = 1.0`, `_target_neck_tuck = 1.0`. Creeps toward cursor. When within `SNEAK_STRIKE_DIST`, snap to standing pose and switch to POUNCING.
+- `POUNCING`: CHARGE speed. Chase cursor like NabMouse SEEKING. Honk every `SNEAK_HONK_RATE`. Grab on `MOUSE_GRAB_DISTANCE`. If still not grabbed after `SNEAK_MAX_DURATION` extra time, give up to WANDER.
+- `DRAGGING`: Same as NabMouse DRAGGING_MOUSE_AWAY. Continue honking. Release at `MOUSE_DROP_DISTANCE`.
+- `DECELERATING`: Same as NabMouse DECELERATING.
+
+---
+
+## 20. Task: Sleep
+
+The goose walks to a corner of the screen, circles down in a shrinking spiral, settles, and sleeps. Has a 15% chance of fake sleep (eyes open periodically, panics if spotted).
+
+```python
+SLEEP_CIRCLE_RADIUS   = 88.0
+SLEEP_SETTLE_DURATION = 2.2
+SLEEP_MIN_DURATION    = 90.0    # seconds minimum sleep
+SLEEP_MAX_DURATION    = 480.0   # seconds maximum sleep (8 minutes)
+SLEEP_CORNER_MARGIN   = 165.0   # px inset from screen edge for nest position
+
+class SleepStage(Enum):
+    WALKING_TO_CORNER = "walking_to_corner"
+    CIRCLING          = "circling"
+    SETTLING          = "settling"
+    SLEEPING          = "sleeping"
+
+@dataclass
+class SleepState:
+    nest_pos: Vector2
+    spiral_start_angle: float = 0.0    # random start angle (radians)
+    stage: SleepStage = SleepStage.WALKING_TO_CORNER
+    spiral_t: float = 0.0              # 0→1 parametric progress along spiral
+    settle_start_time: float = -1.0
+    wake_time: float = -1.0
+    is_fake_sleep: bool = False
+    next_eye_event_time: float = -1.0  # when to open/close peeking eye
+    eye_is_open: bool = False
+    spotted_time: float = -1.0         # when cursor was spotted (triggers freak-out)
+```
+
+**Stages:**
+
+**WALKING_TO_CORNER:** WALK speed toward one of three corners (top-left, top-right, bottom-right), each inset by `SLEEP_CORNER_MARGIN` px. Corner chosen randomly (or top-left in DEV mode). Slight random jitter (±15px) added to nest position.
+
+**CIRCLING:** SNEAK speed. Target advances along a shrinking spiral at constant arc speed (40px/s), ensuring the goose always has a target slightly ahead of itself without overshooting. The spiral runs for 1.5 revolutions. Formula:
+```python
+arc_len = max(SLEEP_CIRCLE_RADIUS * (1.0 - spiral_t) * 1.5 * 2 * pi, 1.0)
+spiral_t = min(spiral_t + (40.0 / arc_len) * DELTA_TIME, 1.0)
+angle = spiral_start_angle + spiral_t * 1.5 * 2 * pi
+radius = SLEEP_CIRCLE_RADIUS * (1.0 - spiral_t)
+target_pos = nest_pos + Vector2(cos(angle) * radius, sin(angle) * radius)
+# Transition to SETTLING when spiral_t >= 0.6
+```
+
+**SETTLING:** Freeze position. Over `SLEEP_SETTLE_DURATION` (2.2s), lerp `_target_sit_lerp` and `_target_neck_tuck` from 0→1 (goose crouches down and tucks head). At end, roll 15% chance for fake sleep.
+
+**SLEEPING:** Freeze position, maintain full crawl pose. Wake after `wake_time`.
+
+**Fake sleep behavior (is_fake_sleep=True):**
+- No sleep bubbles rendered
+- Every 5–15 seconds: open one eye (random left=1 or right=2) for 0.5–2.5 seconds, then close
+- While any eye is open and cursor is within 150px: start spotted sequence
+  - 0–0.75s: hold still (one eye open, no exclamation)
+  - 0.75–1.5s: open both eyes (`peek_eye = 3`) + show exclamation mark
+  - >1.5s: trigger freak-out (see §9.4)
+
+**Real sleep behavior (is_fake_sleep=False):**
+- Sleep bubbles rendered (`rig.show_sleep_bubbles = True`)
+- Clicking the goose wakes it up (honk, transition to WANDER)
+
+---
+
+## 21. Task: PeekBack
+
+After a fake-sleep freak-out, the goose returns to the nearest screen edge, peeks back in cautiously, sweeps its gaze, then walks back onto the screen normally.
+
+```python
+PEEK_INSET = 14.0   # px from screen edge for the peek position
+
+@dataclass
+class PeekBackState:
+    peek_pos: Vector2       # position just inside screen edge
+    enter_pos: Vector2      # position to walk toward when fully returning
+    face_dir: float         # direction facing inward (0=right, 180=left, 90=down, -90=up)
+    sweep_deg: float        # total sweep angle (45–150 degrees)
+    stage: str = "peeking_in"
+    look_start_time: float = -1.0
+    look_duration: float = 8.8       # seconds for the sweep
+    walk_in_dist: float = -1.0       # measured on first frame of walking_in
+    pause_start_time: float = -1.0
+    pause_duration: float = 0.0
+```
+
+**Setup (in `_set_task`):**
+- Find nearest screen edge
+- `peek_pos`: 14px inside that edge, clamped 80px from perpendicular edges
+- `enter_pos`: random distance into the screen (150px to screen_w/2 or similar), with ±80–180px perpendicular diagonal offset (random direction), clamped to screen bounds
+- `face_dir`: 0° for left edge, 180° for right edge, 90° for top edge, -90° for bottom edge
+- `sweep_deg`: `random_range(45.0, 150.0)`
+- Rig snapped immediately to full crawl: `rig.sit_lerp_percent = 1.0`, `rig.neck_tuck_lerp_percent = 1.0`
+
+**Stages:**
+
+- `peeking_in`: Walk to `peek_pos`. WALK speed until within 80px, then SNEAK speed. Full crawl pose. Transition to `looking` when within 12px.
+- `looking`: Freeze position. Hold full crawl pose. Sweep gaze left/right using sine wave over `look_duration` seconds. The sweep uses a smoothstep ease-in/ease-out envelope over the first/last 18% of the duration, with linear exit blend to `enter_pos` direction in the final 18%:
+  ```python
+  t_norm = clamp(elapsed / look_duration, 0.0, 1.0)
+  ramp = 0.18
+  ease_in  = smoothstep(t_norm / ramp)
+  ease_out = smoothstep((1.0 - t_norm) / ramp)
+  envelope = min(ease_in, ease_out)
+  sweep = sin(t_norm * 2π) * (sweep_deg / 2.0) * envelope
+  target_dir = face_dir + sweep
+  exit_blend = linear clamp of last ramp fraction
+  target_pos = lerp(sweep_point, enter_pos, exit_blend)
+  ```
+- `walking_in`: SNEAK speed. Walk to `enter_pos`. Gradually stand up: `_target_sit_lerp` and `_target_neck_tuck` lerp from 1→0 proportional to distance remaining. Transition to `pausing` when within 12px.
+- `pausing`: Freeze 0.5–1.5 seconds, then transition to WANDER.
+
+---
+
+## 22. Notepad Window (`notepad_window.py`)
+
+### 22.1 Built-in phrases
+
+```python
+BUILTIN_PHRASES = [
+    "am goose hjonk",
+    "good work",
+    "nsfdafdsaafsdjl\nasdas       sorry\nhard to type withh feet",
+    "i cause problems on purpose",
+    '"peace was never an option"\n   -the goose (me)',
+    "\n\n  >o) \n    (_>",
+]
+```
+
+### 22.2 Custom messages
+
+Load all `.txt` files from `assets/text/notepad_messages/`. Merge with built-in phrases into a single Deck. If directory doesn't exist or is empty, use only built-in phrases.
+
+### 22.3 Window appearance
+
+- Size: 200×150 px
+- Title: `Goose "Not-epad"`
+- Contains a multiline text box filling the client area
+- Font: custom handwriting font loaded from `assets/fonts/`. Search for TTF/OTF files; prefer any font whose family name contains "fonty" or "notestar". Fall back to system default if none found.
+- Font size: from `config.notepad_font_size` (default 25)
+- `TopMost = True`
+
+### 22.4 Custom font loading
+
+```python
+# On startup, scan assets/fonts/ for .ttf/.otf files
+# Load via QFontDatabase.addApplicationFont()
+# Prefer font with family name containing "fonty" or "notestar" (case-insensitive)
+# Apply to notepad QTextEdit via QFont(family_name, font_size)
+```
+
+---
+
+## 23. Meme Window (`meme_window.py`)
+
+### 23.1 Local images
+
+Load all files from `assets/images/memes/`. Supported formats: PNG, JPG, JPEG, GIF, BMP, WEBP.
+
+Use a Deck for selection (no repeats until all shown).
+
+GIFs must animate — use `QMovie` for animated GIF playback inside a `QLabel`.
+
+### 23.2 Fallback URLs
+
+If no local images found, fall back to fetching one of these hardcoded URLs:
+
+```python
+FALLBACK_URLS = [
+    "https://preview.redd.it/dsfjv8aev0p31.png?...",
+    "https://i.redd.it/4ojv59zvglp31.jpg",
+    "https://i.redd.it/4bamd6lnso241.jpg",
+    "https://i.redd.it/5i5et9p1vsp31.jpg",
+    "https://i.redd.it/j2f1i9djx5p31.jpg",
+]
+```
+
+### 23.3 Window appearance
+
+- Size: 400×400 px
+- No title bar text
+- Image displayed with `Qt.AspectRatioMode.KeepAspectRatio`
+- `TopMost = True`
+- Not resizable
+
+---
+
+## 24. Base Movable Window (`movable_window.py`)
+
+Both NotepadWindow and MemeWindow inherit from this.
+
+```python
+class MovableWindow(QWidget):
+    closing = pyqtSignal()    # emitted when user closes window
+
+    def move_threadsafe(self, x: int, y: int):
+        QMetaObject.invokeMethod(self, "_do_move", QueuedConnection,
+                                 Q_ARG(int, x), Q_ARG(int, y))
+
+    @pyqtSlot(int, int)
+    def _do_move(self, x, y):
+        self.move(x, y)
+        self.raise_()
+
+    def closeEvent(self, event):
+        self.closing.emit()
+        super().closeEvent(event)
+```
+
+NotepadWindow uses standard window chrome. MemeWindow is frameless.
+
+---
+
+## 25. Sound (`sound.py`)
+
+### 25.1 Sound files
+
+```
+assets/sounds/Honk1.mp3   through   Honk4.mp3
+assets/sounds/BITE.mp3
+assets/sounds/MudSquish.mp3
+assets/sounds/Pat1.wav
+assets/sounds/Pat2.wav
+assets/sounds/Pat3.wav
+assets/sounds/Music.mp3    (optional — loop at 50% volume from startup)
+```
+
+### 25.2 Sound API
+
+```python
+class Sound:
+    def init(self): ...         # pygame.mixer.init(), load/preload all files
+
+    def honk(self):
+        # Pick random from Honk1–4, play at volume 0.8
+        # Stop previous honk before playing new one
+
+    def chomp(self):
+        # Play BITE.mp3 at volume 0.07
+
+    def play_pat(self):
+        # Pick random from Pat1–3 WAV pool, rewind to start, play
+
+    def play_mud_squish(self):
+        # Seek MudSquish.mp3 to start and play
+```
+
+### 25.3 Silence mode
+
+If `config.silence_sounds = True`, all `Sound` methods are no-ops.
+
+---
+
+## 26. Quit Mechanic
+
+Hold ESC for ~5 seconds to quit. Progress bar slides in from top.
+
+```python
+QUIT_ALPHA_INCREMENT = 0.00216666679  # per frame while ESC held
+QUIT_ALPHA_DECREMENT = 0.0166666675   # per frame while ESC released
+QUIT_THRESHOLD = 0.99
+QUIT_SHOW_THRESHOLD = 0.2
+```
+
+```python
+def update_quit(painter, keys_pressed):
+    if Key_Escape in keys_pressed:
+        quit_alpha += QUIT_ALPHA_INCREMENT
+    else:
+        quit_alpha -= QUIT_ALPHA_DECREMENT
+    quit_alpha = clamp(quit_alpha, 0.0, 1.0)
+
+    if quit_alpha > QUIT_SHOW_THRESHOLD:
+        frac = (quit_alpha - 0.2) / 0.8
+        y = int(lerp(-15, 10, exponential_ease_out(frac * 2)))
+        # LightBlue background, LightPink progress fill, dark text
+        text = "Continue holding ESC to evict goose"
+
+    if quit_alpha > QUIT_THRESHOLD:
+        QApplication.quit()
+```
+
+---
+
+## 27. Modding API (`mod_loader.py`)
+
+### 27.1 Mod structure
+
+```
+mods/
+└── MyModName/
+    ├── mod.py          # Required. Must contain a class named Mod.
+    └── assets/         # Optional.
+```
+
+### 27.2 Mod interface
+
+```python
+class Mod:
+    def __init__(self, api: GooseAPI): ...
+    def on_load(self): ...
+    def on_tick(self): ...
+    def on_render(self, painter: QPainter): ...
+    def on_task_changed(self, task: Task): ...
+    def on_unload(self): ...
+```
+
+All methods are optional — `mod_loader` checks `hasattr` before calling.
+
+### 27.3 GooseAPI surface
+
+```python
+class GooseAPI:
+    @property
+    def position(self) -> Vector2: ...
+    @property
+    def velocity(self) -> Vector2: ...
+    @property
+    def direction(self) -> float: ...
+    @property
+    def current_task(self) -> Task: ...
+    @property
+    def screen_size(self) -> tuple[int, int]: ...
+    @property
+    def rig(self) -> Rig: ...
+
+    def set_task(self, task: Task): ...
+    def play_sound(self, path: str): ...
+    def show_image_window(self, image_path: str): ...
+    def show_text_window(self, text: str): ...
+    def add_foot_mark(self, position: Vector2): ...
+    def draw_circle(self, painter, center: Vector2, radius: int, color: str): ...
+    def draw_line(self, painter, start: Vector2, end: Vector2, width: int, color: str): ...
+```
+
+### 27.4 Loading
+
+Mods load only when `config.enable_mods = True`. Loaded alphabetically. Bad mods log an error and are skipped — never crash the app.
+
+---
+
+## 28. Developer Flags
+
+Three global flags in `goose.py` for testing specific behaviors without waiting for them to appear naturally:
+
+```python
+DEV_FORCE_TASK = None          # Set to a Task name string (e.g. "sleep") to force that task always
+DEV_SHORT_WANDER = False       # Wander lasts only 3 seconds instead of config range
+DEV_FORCE_FAKE_SLEEP = False   # 100% fake sleep instead of 15% chance
+```
+
+`DEV_FORCE_TASK` is checked in `_choose_next_task()` — if set, bypasses the deck entirely.
+`DEV_SHORT_WANDER` is checked in `_get_random_wander_duration()`.
+`DEV_FORCE_FAKE_SLEEP` is checked during the SETTLING→SLEEPING transition.
+
+Additionally, when `DEV_FORCE_TASK` is set, the SLEEP task always uses the top-left corner instead of a random corner.
+
+---
+
+## 29. Startup Sequence
+
+```
+1. Create QApplication
+2. Detect platform; if Wayland and no XWayland: show error dialog and exit
+3. Load config.ini (create silently with defaults if missing)
+4. Create overlay window (transparent, always-on-top, click-through)
+5. Size overlay to primary monitor
+6. Apply platform-specific click-through (Windows: SetWindowLong)
+7. Init sound system (unless SilenceSounds=True)
+8. Init goose (TheGoose.__init__):
+   a. Set initial position to (-20, 120)
+   b. Set initial target to (100, 150)
+   c. Init foot positions
+   d. Set initial task to WANDER (with honk=False)
+9. If EnableMods=True: discover and load mods
+10. Start game loop timer
+11. QApplication.exec()
+```
+
+---
+
+## 30. Platform Notes for Claude Code
+
+### Windows
+- Click-through: must call `SetWindowLong` via ctypes after window show.
+- Cursor clip: `ClipCursor` via ctypes, `RECT` struct.
+- Bring to foreground: `SetForegroundWindow(hwnd)` when goose grabs cursor.
+
+### macOS
+- Accessibility permissions required for cursor position read and move.
+- No `ClipCursor` equivalent — simulate with `pyautogui.moveTo()`.
+
+### Linux
+- Check for `DISPLAY` env var; abort with message if not set.
+- `pyautogui` uses `python-xlib` — ensure it's in requirements.
+
+---
+
+## 31. Asset Requirements
+
+| File | Description |
+|------|-------------|
+| Honk1–4.mp3 | Goose honk sounds (4 variants) |
+| BITE.mp3 | Cursor grab sound (very quiet, 0.07 volume) |
+| MudSquish.mp3 | Mud footstep squish sound |
+| Pat1–3.wav | Footstep pat sounds (3 variants) |
+| Music.mp3 | Optional background music loop |
+
+App must not crash if sound files are missing — log a warning and continue.
+
+---
+
+## 32. Implementation Checkpoints for Claude Code
+
+| # | Checkpoint | Deliverable |
+|---|-----------|-------------|
+| 1 | Engine layer | `vector2.py`, `math_utils.py`, `easings.py`, `deck.py`, `rig.py`, `time_keeper.py` — with unit tests |
+| 2 | Transparent overlay window | Window covers screen, is transparent, click-through on all 3 platforms. |
+| 3 | Goose rig + renderer | Goose drawn correctly at a fixed position. All body parts correct sizes/colors. Crawl/sit pose works. |
+| 4 | Physics + wander | Goose walks around screen autonomously. Feet animate. Neck extends at run speed. |
+| 5 | Footmarks | TrackMud task works. Brown dots appear and fade. |
+| 6 | NabMouse | Cursor gets grabbed and dragged. All 3 platforms. |
+| 7 | Notepad window | Window spawns with custom font. Goose drags it. Early close triggers NabMouse. |
+| 8 | Meme window | Image/GIF window spawns. GIF animates. Fallback URLs work. |
+| 9 | WatchMouse | Goose sits near cursor, bobs, occasionally honks. Petting while sitting has three outcomes. |
+| 10 | FollowMouse | Goose follows cursor at preferred distance. Flees if too close. Honk marches. |
+| 11 | SneakAttack | Goose creeps in crawl pose, pounces, grabs. |
+| 12 | Sleep | Goose circles to corner, settles, sleeps. Fake sleep with eye peeking and freak-out. |
+| 13 | PeekBack | Post-freak-out peek sequence with sweep and walk-in. |
+| 14 | Sound | All sounds play. Silence mode works. |
+| 15 | Config | config.ini loads/saves. Custom colors work. |
+| 16 | Quit mechanic | ESC hold progress bar. Correct timing. |
+| 17 | Mod API | Loader discovers mods. Example mod runs. Bad mods don't crash app. |
+| 18 | Packaging | PyInstaller builds working single-folder distributions for Windows, macOS, Linux. |
+
+---
+
+## 33. Known Deviations from Original
+
+| Feature | Original | PyGoose |
+|---------|----------|-----------|
+| Donate window | Shows after 480s | Omitted |
+| Config file name | `config.goos` | `config.ini` |
+| Sound backend | WinMM `mciSendString` | `pygame.mixer` |
+| Cursor clip on macOS | Not supported (Windows-only) | Simulated with rapid moveTo |
+| Mod format | C# DLLs | Python plugins |
+| First UX sequence | TrackMud → Meme hardcoded | Same behavior, cleaner implementation |
+| Linux support | None | X11 supported |
+| New tasks | None | WatchMouse, FollowMouse, SneakAttack, Sleep/FakeSleep, PeekBack |
+| Config missing | Show messagebox | Create silently |
+| Notepad font | System default | Custom handwriting font from assets/fonts/ |
+
+---
+
+## 34. Future Feature Ideas / Backlog
+
+Ideas to revisit when the core is solid. Not yet designed or prioritized.
+
+### 34.1 Click zone reactions (body vs. head)
+
+Currently all petting clicks within 30px of the goose head trigger the same NAB_MOUSE response. The idea is to differentiate based on which part of the body was actually clicked:
+
+- **Click head:** Current behavior — goose bites the cursor and runs away with it (NAB_MOUSE)
+- **Click body:** Different reaction, leaning toward a honk and possibly a short startled wander, or some other annoyed-but-not-attacking response
+
+Implementation notes to figure out: define a head hit zone (ellipse around `neck_head_point`/`head1_end_point`) vs. a body hit zone (ellipse around `body_center`). The zones may need to expand/shrink with the rig pose. The distinction between "annoyed honk" and "full attack" gives the goose more personality and makes clicking feel reactive rather than always punishing.
+
+### 34.2 Window cleanup (two-window limit with shredding)
+
+When the goose tries to bring a third notepad or meme window onto the screen while two are already present, it should first remove one of the existing ones rather than piling up clutter.
+
+**Motivation:** Without a limit, long sessions accumulate an ever-growing pile of windows. The cleanup mechanic reframes this as intentional goose behavior rather than a bug — he's not just dumping content, he has opinions about how many notes are appropriate. He brought it, he decides when it's done. The shredder is the payoff: it turns a housekeeping task into a moment.
+
+**Limit scope:** The original request was "two notes or two pictures" — meaning the limit is **per type**: up to 2 notepad windows and up to 2 meme windows can coexist. A notepad and a meme each count against their own pool, not a shared total.
+
+**Rough flow:**
+1. Goose picks a collect-window task (notepad or meme)
+2. Before walking offscreen to fetch it, check if 2 windows of that type are already on screen
+3. If so: goose grabs the oldest one of that type and drags it off-screen (reverse of the drag-back logic — beak-attach and walk toward the nearest edge)
+4. Once it disappears off the edge, play a shredder/destruction sound
+5. Then proceed to fetch the new window normally
+
+**Sound:** TBD — a new asset would be ideal (paper shredder, mechanical grinding, or a satisfying crunch). A placeholder of honk+chomp layered together could work in the interim.
+
+**Open questions:**
+- What happens if the user has moved the window to a different position? The goose should still be able to grab and drag it — treat current window position as the target regardless of where it originally landed.
+- Should the goose do this cleanup mid-task (interrupting a wander) or only at the moment of deciding the next task? The latter is simpler and less jarring.
+- Does the "anger if closed" behavior still apply during the removal drag? Probably not — the goose is the one removing it, so closing it during that drag shouldn't trigger an attack.

@@ -1,4 +1,4 @@
-from math import atan2, degrees
+from math import atan2, degrees, sin, pi
 from PyQt6.QtGui import QPainter, QColor, QPen, QBrush
 from PyQt6.QtCore import Qt, QPointF, QRectF
 
@@ -16,6 +16,7 @@ COLOR_LIGHT_GRAY = QColor("lightgray")
 COLOR_ORANGE = QColor("orange")
 COLOR_BLACK = QColor("black")
 COLOR_SADDLE_BROWN = QColor(0x8B, 0x45, 0x13)
+COLOR_YELLOW = QColor(0xFF, 0xE0, 0x00)
 
 
 def update_rig(position: Vector2, direction: float, rig: Rig):
@@ -121,11 +122,63 @@ def render_goose(painter: QPainter, rig: Rig, position: Vector2, direction: floa
     _set_pen(painter, beak_color, 11)
     painter.drawLine(_pt(rig.head2_end_point), _pt(rig.head2_end_point + fwd * 5))
 
-    # 6. Eyes
+    # 6. Eyes (hidden while sleeping, one may peek during fake sleep)
     b = Vector2(1.3, 0.4)
-    left_eye = rig.neck_head_point + UP * 3 - right * b.x * 3 + fwd * 5
+    left_eye  = rig.neck_head_point + UP * 3 - right * b.x * 3 + fwd * 5
     right_eye = rig.neck_head_point + UP * 3 + right * b.x * 3 + fwd * 5
     painter.setBrush(QBrush(COLOR_BLACK))
     painter.setPen(Qt.PenStyle.NoPen)
-    painter.drawEllipse(_pt(left_eye), 2.0, 2.0)
-    painter.drawEllipse(_pt(right_eye), 2.0, 2.0)
+    if not rig.is_sleeping or rig.peek_eye == 3:
+        painter.drawEllipse(_pt(left_eye), 2.0, 2.0)
+        painter.drawEllipse(_pt(right_eye), 2.0, 2.0)
+    elif rig.peek_eye == 1:
+        painter.drawEllipse(_pt(left_eye), 2.0, 2.0)
+    elif rig.peek_eye == 2:
+        painter.drawEllipse(_pt(right_eye), 2.0, 2.0)
+
+    # 7. Sleep bubbles
+    if rig.show_sleep_bubbles:
+        _render_sleep_bubbles(painter, rig)
+
+    # 8. Exclamation mark
+    if rig.show_exclamation:
+        _render_exclamation(painter, rig)
+
+
+def _render_sleep_bubbles(painter: QPainter, rig: Rig):
+    base = rig.neck_head_point + UP * 10.0
+    # 3 bubbles with staggered phases, each cycling over 3 seconds
+    configs = [
+        {"offset": 0.0,  "x_drift":  6.0, "max_r": 3.5},
+        {"offset": 1.0,  "x_drift": 11.0, "max_r": 5.0},
+        {"offset": 2.0,  "x_drift": 15.0, "max_r": 6.5},
+    ]
+    cycle = 3.0
+    rise  = 28.0
+    for cfg in configs:
+        p = ((rig.sleep_phase + cfg["offset"]) % cycle) / cycle  # 0→1
+        alpha = int(clamp(lerp(220, 0, max(0.0, (p - 0.5) * 2.0)), 0, 255))
+        if alpha == 0:
+            continue
+        r   = lerp(1.5, cfg["max_r"], p)
+        pos = Vector2(base.x + cfg["x_drift"], base.y - p * rise)
+        color = QColor(255, 255, 255, alpha)
+        outline = QColor(160, 200, 255, alpha)
+        pen = QPen(outline, 1)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+        painter.setBrush(QBrush(color))
+        painter.drawEllipse(_pt(pos), r, r)
+
+
+def _render_exclamation(painter: QPainter, rig: Rig):
+    base = rig.neck_head_point + UP * 22.0
+    outline_pen = QPen(COLOR_BLACK, 1.5)
+    outline_pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    painter.setPen(outline_pen)
+    painter.setBrush(QBrush(COLOR_YELLOW))
+    # Vertical bar: tall thin rounded rect
+    bar = QRectF(base.x - 3.5, base.y - 14.0, 7.0, 10.0)
+    painter.drawRoundedRect(bar, 2.0, 2.0)
+    # Dot below
+    painter.drawEllipse(QPointF(base.x, base.y), 3.5, 3.5)
