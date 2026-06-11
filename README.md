@@ -11,7 +11,7 @@ A Python/PyQt6 reimplementation of [samperson's Desktop Goose](https://samperson
 A goose lives on your desktop. He has opinions about you. He will:
 
 - **Wander** around your screen minding his own business (sort of)
-- **Watch your cursor** — sit down nearby, stare at it, occasionally honk, stare some more. smooth brain... or planning?
+- **Watch your cursor** — sit down nearby, stare at it, occasionally honk, stare some more. is he planning?
 - **Follow you around** at a comfortable distance, march-honking when the mood strikes
 - **Sneak up on you** — creep in crawl pose, wait for the right moment, then pounce and steal your mouse
 - **Steal your mouse** and drag it somewhere else, honking triumphantly
