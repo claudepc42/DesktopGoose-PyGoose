@@ -5,9 +5,7 @@ from PyQt6.QtGui import QFont, QIcon, QPainter, QColor, QPen, QFontDatabase
 
 from pygoose.goose.windows.movable_window import MovableWindow
 from pygoose.engine.deck import Deck
-
-ASSETS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "text", "notepad_messages")
-FONTS_DIR  = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "fonts")
+from pygoose.paths import resource_path, user_data_path
 
 _fonts_loaded = False
 
@@ -15,7 +13,7 @@ def _load_fonts():
     global _fonts_loaded
     if _fonts_loaded:
         return
-    fonts_dir = os.path.abspath(FONTS_DIR)
+    fonts_dir = resource_path("assets", "fonts")
     if os.path.isdir(fonts_dir):
         for fname in os.listdir(fonts_dir):
             if fname.lower().endswith((".ttf", ".otf")):
@@ -32,7 +30,7 @@ TOP_OFFSET = 30  # height of title bar area before lines start
 
 def _load_phrases() -> list[str]:
     phrases = []
-    assets_dir = os.path.abspath(ASSETS_DIR)
+    assets_dir = user_data_path("assets", "text", "notepad_messages")
     if os.path.isdir(assets_dir):
         for fname in os.listdir(assets_dir):
             if fname.endswith(".txt"):

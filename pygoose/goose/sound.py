@@ -3,12 +3,11 @@ from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtCore import QUrl
 
 from pygoose.engine.math_utils import get_rng
-
-SOUNDS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "assets", "sounds")
+from pygoose.paths import resource_path
 
 
 def _path(filename: str) -> str:
-    return os.path.abspath(os.path.join(SOUNDS_DIR, filename))
+    return resource_path("assets", "sounds", filename)
 
 
 def _exists(filename: str) -> bool:

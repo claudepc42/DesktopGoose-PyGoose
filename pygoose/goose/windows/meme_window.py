@@ -6,6 +6,7 @@ from PyQt6.QtGui import QPainter, QPixmap, QMovie, QColor, QFont
 
 from pygoose.goose.windows.movable_window import MovableWindow
 from pygoose.engine.deck import Deck
+from pygoose.paths import user_data_path
 
 SUPPORTED_EXTS = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp")
 
@@ -80,7 +81,6 @@ WINDOW_TITLES = [
     "honk. that's it. that's the message.",
 ]
 
-ASSETS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "images", "memes")
 
 _placeholder_deck: Deck | None = None
 
@@ -93,7 +93,7 @@ def _get_placeholder_deck() -> Deck:
 
 
 def _local_images() -> list[str]:
-    d = os.path.abspath(ASSETS_DIR)
+    d = user_data_path("assets", "images", "memes")
     if not os.path.isdir(d):
         return []
     return [

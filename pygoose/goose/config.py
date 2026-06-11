@@ -3,7 +3,7 @@ import configparser
 from dataclasses import dataclass
 from PyQt6.QtWidgets import QMessageBox
 
-CONFIG_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "config.ini")
+from pygoose.paths import user_data_path
 CONFIG_VERSION = 1
 
 
@@ -59,7 +59,7 @@ def _save(cfg: GooseConfig, path: str):
 
 
 def load_config() -> GooseConfig:
-    path = os.path.abspath(CONFIG_PATH)
+    path = user_data_path("config.ini")
 
     if not os.path.exists(path):
         return _write_defaults(path)
