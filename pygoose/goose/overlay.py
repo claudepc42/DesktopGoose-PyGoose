@@ -1,18 +1,34 @@
 import sys
 import ctypes
 from PyQt6.QtWidgets import QWidget, QApplication
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QPainter, QColor
+from PyQt6.QtCore import QTimer
+from PyQt6.QtGui import QPainter, QColor, QFont, QFontMetrics
+
+from pygoose.engine.math_utils import lerp, clamp
+from pygoose.engine.easings import exponential_ease_out
 
 GWL_EXSTYLE = -20
 WS_EX_LAYERED = 0x00080000
 WS_EX_TRANSPARENT = 0x00000020
+VK_ESCAPE = 0x1B
+
+QUIT_ALPHA_INCREMENT = 0.00216666679
+QUIT_ALPHA_DECREMENT = 0.0166666675
+QUIT_THRESHOLD       = 0.99
+QUIT_SHOW_THRESHOLD  = 0.2
+
+
+def _is_esc_held() -> bool:
+    if sys.platform == "win32":
+        return bool(ctypes.windll.user32.GetAsyncKeyState(VK_ESCAPE) & 0x8000)
+    return False
 
 
 class Overlay(QWidget):
     def __init__(self, on_tick=None):
         super().__init__()
         self._on_tick = on_tick
+        self._quit_alpha = 0.0
         self._setup_window()
         self._apply_click_through()
         self._start_loop()
@@ -49,16 +65,49 @@ class Overlay(QWidget):
     def _tick(self):
         if self._on_tick:
             self._on_tick()
+        self._update_quit()
         self.update()
+
+    def _update_quit(self):
+        if _is_esc_held():
+            self._quit_alpha += QUIT_ALPHA_INCREMENT
+        else:
+            self._quit_alpha -= QUIT_ALPHA_DECREMENT
+        self._quit_alpha = clamp(self._quit_alpha, 0.0, 1.0)
+
+        if self._quit_alpha >= QUIT_THRESHOLD:
+            QApplication.quit()
 
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         self._paint(painter)
+        if self._quit_alpha > QUIT_SHOW_THRESHOLD:
+            self._draw_quit_bar(painter)
         painter.end()
 
+    def _draw_quit_bar(self, painter: QPainter):
+        frac = (self._quit_alpha - QUIT_SHOW_THRESHOLD) / (1.0 - QUIT_SHOW_THRESHOLD)
+        slide = clamp(frac * 2.0, 0.0, 1.0)
+        y = int(lerp(-20, 10, exponential_ease_out(slide)))
+
+        text = "Continue holding ESC to evict goose"
+        font = QFont("Arial", 12, QFont.Weight.Bold)
+        metrics = QFontMetrics(font)
+        text_rect = metrics.boundingRect(text)
+        w = text_rect.width() + 20
+        h = text_rect.height() + 10
+
+        painter.fillRect(5, y, w, h, QColor("LightBlue"))
+        painter.fillRect(5, y, int(lerp(0, w, self._quit_alpha)), h, QColor("LightPink"))
+
+        alpha_byte = int(256 * self._quit_alpha)
+        painter.setPen(QColor(alpha_byte, alpha_byte, alpha_byte))
+        painter.setFont(font)
+        painter.drawText(15, y + text_rect.height(), text)
+
     def _paint(self, painter: QPainter):
-        pass  # subclasses or game object override via set_render_fn
+        pass
 
     def set_render_fn(self, fn):
         self._paint = fn
