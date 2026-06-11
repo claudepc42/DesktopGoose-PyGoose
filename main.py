@@ -22,6 +22,7 @@ def main():
 
     overlay = Overlay(on_tick=on_tick)
     overlay.set_render_fn(render)
+    overlay.set_dirty_rect_fn(goose.dirty_rect)
     overlay.grabKeyboard()
     sys.exit(app.exec())
 

@@ -2,7 +2,7 @@
 
 A Python/PyQt6 reimplementation of [samperson's Desktop Goose](https://samperson.itch.io/desktop-goose) — a chaotic little goose that wanders your screen, steals your mouse, and leaves you passive-aggressive notes.
 
-![Python](https://img.shields.io/badge/python-3.12%2B-blue) ![PyQt6](https://img.shields.io/badge/PyQt6-6.x-green) ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
+![Version](https://img.shields.io/badge/version-0.32-orange) ![Python](https://img.shields.io/badge/python-3.12%2B-blue) ![PyQt6](https://img.shields.io/badge/PyQt6-6.x-green) ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
 
 ---
 

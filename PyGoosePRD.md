@@ -1,5 +1,5 @@
 # PyGoose — Product Requirements Document
-**Version:** 1.1
+**Version:** 0.32
 **Status:** Active Development
 **Source:** Reverse-engineered from decompiled Desktop Goose v0.31 (arkangel-dev/desktop-goose-source) + original PyGoose implementation
 
@@ -1680,3 +1680,23 @@ When the goose tries to bring a third notepad or meme window onto the screen whi
 - What happens if the user has moved the window to a different position? The goose should still be able to grab and drag it — treat current window position as the target regardless of where it originally landed.
 - Should the goose do this cleanup mid-task (interrupting a wander) or only at the moment of deciding the next task? The latter is simpler and less jarring.
 - Does the "anger if closed" behavior still apply during the removal drag? Probably not — the goose is the one removing it, so closing it during that drag shouldn't trigger an attack.
+
+### 35.3 Floating draggable menu button
+
+A small always-on-top UI element — something like a subtle icon or pill — that floats on screen and can be dragged to any corner or position. Clicking it would open a quick-access menu (pause, quit, config, etc.) as an alternative to the ESC hold mechanic and as a discoverable entry point for users who don't know the keyboard shortcut.
+
+**Motivation:** ESC-hold is not obvious to new users and requires keyboard access. A persistent but unobtrusive button gives a visual affordance without cluttering the screen. The draggable aspect lets users tuck it out of the way.
+
+**Open questions:**
+- Should this be a separate window/widget from the overlay, or painted on top of it?
+- What menu items make sense at launch: quit, pause/resume, config file location?
+- How small can the button be before it's too easy to miss vs. too intrusive? A 32×32 or 40×40 icon is a reasonable starting point.
+- Should the button auto-hide after a period of inactivity and re-appear on mouse-near?
+
+---
+
+## 36. Known Issues / Needs Investigation
+
+### 36.1 ESC quit unreliable in packaged exe
+
+ESC-hold to quit works correctly when running from source (`python main.py`) but is only partially functional in the PyInstaller-built `dist\PyGoose\PyGoose.exe`. Root cause not yet investigated. May relate to `GetAsyncKeyState` permissions, focus behavior of the bootloader process, or the overlay window not being properly foregrounded in the frozen build.

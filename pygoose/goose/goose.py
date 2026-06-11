@@ -436,6 +436,21 @@ class Goose:
             self.config,
         )
 
+    def dirty_rect(self):
+        """Region needing repaint this frame: the goose plus any footmarks
+        mid-shrink. Static footmarks keep their previously painted pixels."""
+        from PyQt6.QtCore import QRect
+        from pygoose.goose.renderer import FOOT_MARK_LIFETIME, FOOT_MARK_SHRINK_TIME
+        r = QRect(int(self.position.x) - 100, int(self.position.y) - 110, 200, 200)
+        t = self.time_keeper.time
+        for m in self.foot_marks:
+            if m.time == 0.0:
+                continue
+            shrink_start = m.time + FOOT_MARK_LIFETIME
+            if shrink_start - 0.1 <= t <= shrink_start + FOOT_MARK_SHRINK_TIME + 0.1:
+                r = r.united(QRect(int(m.position.x) - 6, int(m.position.y) - 6, 12, 12))
+        return r
+
     # -----------------------------------------------------------------------
     # Speed
     # -----------------------------------------------------------------------

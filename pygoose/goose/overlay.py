@@ -1,7 +1,7 @@
 import sys
 import ctypes
 from PyQt6.QtWidgets import QWidget, QApplication
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QPainter, QColor, QFont, QFontMetrics
 
 from pygoose.engine.math_utils import lerp, clamp
@@ -29,6 +29,8 @@ class Overlay(QWidget):
         super().__init__()
         self._on_tick = on_tick
         self._quit_alpha = 0.0
+        self._get_dirty_rect = None
+        self._last_dirty_rect = None
         self._setup_window()
         self._apply_click_through()
         self._start_loop()
@@ -58,15 +60,26 @@ class Overlay(QWidget):
 
     def _start_loop(self):
         self._timer = QTimer()
-        self._timer.setInterval(8)  # ~120fps, lets Qt event loop pace itself
+        self._timer.setInterval(16)  # ~60Hz wakeups; physics steps twice per wake (120Hz sim)
         self._timer.timeout.connect(self._tick)
         self._timer.start()
 
     def _tick(self):
+        # Two fixed physics steps per wake keeps the 120Hz simulation rate
         if self._on_tick:
             self._on_tick()
+            self._on_tick()
         self._update_quit()
-        self.update()
+        self._update_quit()
+        if self._get_dirty_rect is None:
+            self.update()
+            return
+        rect = self._get_dirty_rect()
+        union = rect.united(self._last_dirty_rect) if self._last_dirty_rect else self.rect()
+        self._last_dirty_rect = rect
+        if self._quit_alpha > 0.01:
+            union = union.united(self._quit_bar_rect())
+        self.update(union)
 
     def _update_quit(self):
         if _is_esc_held():
@@ -106,8 +119,15 @@ class Overlay(QWidget):
         painter.setFont(font)
         painter.drawText(15, y + text_rect.height(), text)
 
+    def _quit_bar_rect(self):
+        from PyQt6.QtCore import QRect
+        return QRect(0, 0, 420, 60)
+
     def _paint(self, painter: QPainter):
         pass
 
     def set_render_fn(self, fn):
         self._paint = fn
+
+    def set_dirty_rect_fn(self, fn):
+        self._get_dirty_rect = fn
