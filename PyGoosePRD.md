@@ -1547,11 +1547,110 @@ App must not crash if sound files are missing — log a warning and continue.
 
 ---
 
-## 34. Future Feature Ideas / Backlog
+## 34. Packaging — Standalone Executable (PyInstaller)
+
+The goal is a double-click-to-run experience for users who have no Python installed. PyInstaller bundles the interpreter, all dependencies, and assets into a self-contained output.
+
+### 34.1 Output mode
+
+Use **one-folder** (`--onedir`) as the primary distribution format:
+
+- A folder containing `PyGoose.exe` plus DLLs, Qt platform plugins, and the assets tree
+- Startup is instant (no extraction step)
+- User zips the folder and shares it, or just hands over the folder
+
+**One-file** (`--onefile`) is not recommended as the default: every launch extracts ~80MB to a temp directory, causing a 3–5 second black-screen delay before anything appears. Acceptable as an optional secondary build target if someone specifically needs a single file.
+
+### 34.2 Asset path resolution
+
+When PyInstaller bundles a one-folder build, the working directory at runtime is not the same as where the exe lives. All asset paths must go through a helper:
+
+```python
+import sys, os
+
+def resource_path(relative: str) -> str:
+    base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, relative)
+```
+
+Every place in the code that opens a file from `assets/` must use `resource_path("assets/...")` instead of a bare relative path. This applies to: sound loading, font loading, meme images, notepad text files.
+
+### 34.3 `config.ini` placement
+
+`config.ini` must **not** be bundled inside the PyInstaller package — it needs to live next to the exe so users can edit it. At startup, resolve the config path relative to the exe's actual location, not `_MEIPASS`:
+
+```python
+def config_path() -> str:
+    if getattr(sys, 'frozen', False):
+        # Running as PyInstaller bundle — config lives next to the exe
+        return os.path.join(os.path.dirname(sys.executable), 'config.ini')
+    else:
+        # Running from source
+        return os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.ini')
+```
+
+Similarly, `assets/text/notepad_messages/` and `assets/images/memes/` are user-drop folders — they should also live next to the exe, not inside the bundle, so users can add their own content without re-packaging. Two separate path roots: `resource_path()` for read-only bundled assets (sounds, fonts), and `user_data_path()` (exe-relative) for user-editable content (config, memes, notes).
+
+### 34.4 PyInstaller spec file
+
+A `.spec` file should be committed to the repo rather than relying on CLI flags. Key entries:
+
+```python
+# PyGoose.spec (sketch)
+a = Analysis(
+    ['main.py'],
+    datas=[
+        ('assets/sounds',  'assets/sounds'),
+        ('assets/fonts',   'assets/fonts'),
+        # memes and notepad_messages are user-side — do NOT bundle them
+    ],
+    hiddenimports=[
+        'pygame',
+        'PyQt6.sip',
+    ],
+)
+```
+
+Qt platform plugins (specifically `qwindows.dll` / `qcocoa.dylib` / `qxcb.so`) must be included or the window will not open. PyInstaller's PyQt6 hook usually handles this automatically, but verify in testing.
+
+### 34.5 Known packaging gotchas
+
+| Issue | Cause | Fix |
+|-------|-------|-----|
+| Blank screen / no window | Qt platform plugin missing | Ensure `platforms/` folder is in the bundle; add `--collect-all PyQt6` if needed |
+| No sound | pygame SDL DLLs missing | `--collect-all pygame` or manually include `SDL2.dll` |
+| Assets not found | Bare relative paths | Replace all asset opens with `resource_path()` |
+| Config resets on every run | config.ini inside bundle (read-only) | Use `config_path()` pointing to exe directory |
+| Antivirus flags the exe | PyInstaller one-file signature | Use one-folder build; code-sign the exe for distribution |
+| Slow startup | One-file extraction | Switch to one-folder |
+
+### 34.6 Build script
+
+A simple `build.py` or `build.bat` at the repo root should encapsulate the build command so it's repeatable:
+
+```bat
+:: build.bat
+pyinstaller PyGoose.spec --noconfirm --clean
+```
+
+Output lands in `dist/PyGoose/`. The build script should also copy a blank `config.ini` (with defaults) and empty `assets/images/memes/` and `assets/text/notepad_messages/` folders into `dist/PyGoose/` so the distribution is ready to use out of the box.
+
+### 34.7 Code changes required before packaging works
+
+- [ ] Replace all bare `open("assets/...")` calls with `resource_path()`
+- [ ] Add `config_path()` helper and thread it through `GooseConfig`
+- [ ] Add `user_data_path()` helper for memes and notepad messages
+- [ ] Write `PyGoose.spec`
+- [ ] Write `build.bat` / `build.sh`
+- [ ] Test on a clean Windows machine with no Python installed
+
+---
+
+## 35. Future Feature Ideas / Backlog
 
 Ideas to revisit when the core is solid. Not yet designed or prioritized.
 
-### 34.1 Click zone reactions (body vs. head)
+### 35.1 Click zone reactions (body vs. head)
 
 Currently all petting clicks within 30px of the goose head trigger the same NAB_MOUSE response. The idea is to differentiate based on which part of the body was actually clicked:
 
@@ -1560,7 +1659,7 @@ Currently all petting clicks within 30px of the goose head trigger the same NAB_
 
 Implementation notes to figure out: define a head hit zone (ellipse around `neck_head_point`/`head1_end_point`) vs. a body hit zone (ellipse around `body_center`). The zones may need to expand/shrink with the rig pose. The distinction between "annoyed honk" and "full attack" gives the goose more personality and makes clicking feel reactive rather than always punishing.
 
-### 34.2 Window cleanup (two-window limit with shredding)
+### 35.2 Window cleanup (two-window limit with shredding)
 
 When the goose tries to bring a third notepad or meme window onto the screen while two are already present, it should first remove one of the existing ones rather than piling up clutter.
 
