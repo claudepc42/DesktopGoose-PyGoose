@@ -12,15 +12,16 @@ def _request_accessibility_macos():
     try:
         import Quartz
     except ImportError:
-        msg = QMessageBox()
-        msg.setWindowTitle("Missing dependency")
-        msg.setText(
-            "PyGoose needs pyobjc-framework-Quartz for full mouse interaction on macOS.\n\n"
-            "Install it with:\n\n"
-            "    pip install pyobjc-framework-Quartz\n\n"
-            "The goose will still run without it, but won't be able to steal your mouse."
-        )
-        msg.exec()
+        if not getattr(sys, 'frozen', False):
+            msg = QMessageBox()
+            msg.setWindowTitle("Missing dependency")
+            msg.setText(
+                "PyGoose needs pyobjc-framework-Quartz for full mouse interaction on macOS.\n\n"
+                "Install it with:\n\n"
+                "    pip install pyobjc-framework-Quartz\n\n"
+                "The goose will still run without it, but won't be able to steal your mouse."
+            )
+            msg.exec()
         return
 
     if not Quartz.AXIsProcessTrusted():

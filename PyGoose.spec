@@ -11,7 +11,7 @@ a = Analysis(
         ('assets/sounds', 'assets/sounds'),
         ('assets/fonts',  'assets/fonts'),
     ],
-    hiddenimports=[],
+    hiddenimports=['Quartz', 'AppKit', 'objc'] if is_mac else [],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
