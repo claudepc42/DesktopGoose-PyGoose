@@ -53,13 +53,18 @@ jobs:
           cp -r assets/images/memes/. dist/PyGoose/assets/images/memes/
           cp -r assets/text/notepad_messages/. dist/PyGoose/assets/text/notepad_messages/
 
-      - name: Archive (zip)
-        if: matrix.archive == 'zip'
+      - name: Archive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path dist/PyGoose -DestinationPath dist/PyGoose-${{ github.ref_name }}-${{ matrix.platform }}.zip
+
+      - name: Archive (macOS)
+        if: runner.os == 'macOS'
         shell: bash
         run: cd dist && zip -r PyGoose-${{ github.ref_name }}-${{ matrix.platform }}.zip PyGoose
 
-      - name: Archive (tar.gz)
-        if: matrix.archive == 'tar.gz'
+      - name: Archive (Linux)
+        if: runner.os == 'Linux'
         shell: bash
         run: cd dist && tar -czf PyGoose-${{ github.ref_name }}-${{ matrix.platform }}.tar.gz PyGoose
 
