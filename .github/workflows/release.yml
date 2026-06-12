@@ -42,12 +42,30 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt pyinstaller
 
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: pip install pyobjc-framework-Quartz
+
       - name: Build
         run: python -m PyInstaller PyGoose.spec --noconfirm --clean
 
-      - name: Copy user assets
+      - name: Copy user assets (Windows / Linux)
+        if: runner.os != 'macOS'
         shell: bash
         run: |
+          mkdir -p dist/PyGoose/assets/images/memes
+          mkdir -p dist/PyGoose/assets/text/notepad_messages
+          cp -r assets/images/memes/. dist/PyGoose/assets/images/memes/
+          cp -r assets/text/notepad_messages/. dist/PyGoose/assets/text/notepad_messages/
+
+      - name: Package macOS dist (onefile binary + user assets)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          mv dist/PyGoose dist/PyGoose_bin
+          mkdir -p dist/PyGoose
+          mv dist/PyGoose_bin dist/PyGoose/PyGoose
+          chmod +x dist/PyGoose/PyGoose
           mkdir -p dist/PyGoose/assets/images/memes
           mkdir -p dist/PyGoose/assets/text/notepad_messages
           cp -r assets/images/memes/. dist/PyGoose/assets/images/memes/
