@@ -58,10 +58,11 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
+          cc -o packaging/macos/launcher packaging/macos/launcher.c
           mv dist/PyGoose dist/PyGoose_bin
           mkdir -p dist/PyGoose/PyGoose.app/Contents/MacOS
           cp packaging/macos/Info.plist dist/PyGoose/PyGoose.app/Contents/Info.plist
-          cp packaging/macos/launcher.sh dist/PyGoose/PyGoose.app/Contents/MacOS/launcher
+          cp packaging/macos/launcher dist/PyGoose/PyGoose.app/Contents/MacOS/launcher
           chmod +x dist/PyGoose/PyGoose.app/Contents/MacOS/launcher
           mv dist/PyGoose_bin dist/PyGoose/PyGoose
           chmod +x dist/PyGoose/PyGoose

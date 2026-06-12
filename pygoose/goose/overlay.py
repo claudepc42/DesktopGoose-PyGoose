@@ -39,6 +39,7 @@ def _macos_setup_overlay():
     for i in range(count):
         win = send(ctypes.c_void_p, [ctypes.c_ulong], windows, b'objectAtIndex:', i)
         send(None, [ctypes.c_bool], win, b'setIgnoresMouseEvents:', True)
+        send(None, [ctypes.c_bool], win, b'setHidesOnDeactivate:', False)
 
 
 def _is_esc_held() -> bool:
