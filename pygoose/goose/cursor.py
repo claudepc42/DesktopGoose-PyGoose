@@ -21,25 +21,25 @@ if sys.platform == "win32":
         return bool(ctypes.windll.user32.GetAsyncKeyState(0x01) & 0x8000)
 
 elif sys.platform == "darwin":
-    try:
-        import Quartz
+    _cg = ctypes.CDLL(
+        '/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics'
+    )
+    _cg.CGEventSourceButtonState.restype = ctypes.c_bool
+    _cg.CGEventSourceButtonState.argtypes = [ctypes.c_int32, ctypes.c_uint32]
+    _kCGEventSourceStateHIDSystemState = 1
+    _kCGMouseButtonLeft = 0
 
-        def set_cursor_clip(x: float, y: float, w: float, h: float):
-            from PyQt6.QtGui import QCursor
-            QCursor.setPos(int(x + w / 2), int(y + h / 2))
+    def set_cursor_clip(x: float, y: float, w: float, h: float):
+        from PyQt6.QtGui import QCursor
+        QCursor.setPos(int(x + w / 2), int(y + h / 2))
 
-        def release_cursor_clip():
-            pass
+    def release_cursor_clip():
+        pass
 
-        def is_left_mouse_down() -> bool:
-            return bool(Quartz.CGEventSourceButtonState(
-                Quartz.kCGEventSourceStateHIDSystemState, Quartz.kCGMouseButtonLeft
-            ))
-
-    except ImportError:
-        def set_cursor_clip(x, y, w, h): pass
-        def release_cursor_clip(): pass
-        def is_left_mouse_down(): return False
+    def is_left_mouse_down() -> bool:
+        return bool(_cg.CGEventSourceButtonState(
+            _kCGEventSourceStateHIDSystemState, _kCGMouseButtonLeft
+        ))
 
 else:
     # Linux — fall back to simulation

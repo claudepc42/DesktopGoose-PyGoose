@@ -21,27 +21,13 @@ def _is_ax_trusted() -> bool:
 
 
 def _request_accessibility_macos():
-    try:
-        import Quartz  # noqa: F401 — needed for mouse stealing in cursor.py
-    except ImportError:
-        if not getattr(sys, 'frozen', False):
-            msg = QMessageBox()
-            msg.setWindowTitle("Missing dependency")
-            msg.setText(
-                "PyGoose needs pyobjc-framework-Quartz for full mouse interaction on macOS.\n\n"
-                "Install it with:\n\n"
-                "    pip install pyobjc-framework-Quartz\n\n"
-                "The goose will still run without it, but won't be able to steal your mouse."
-            )
-            msg.exec()
-
     if not _is_ax_trusted():
         msg = QMessageBox()
         msg.setWindowTitle("Accessibility access needed")
         msg.setText(
             "PyGoose needs Accessibility permission to steal your mouse.\n\n"
             "Go to System Settings → Privacy & Security → Accessibility "
-            "and add Terminal (or PyGoose) to the list."
+            "and add PyGoose to the list."
         )
         msg.exec()
 

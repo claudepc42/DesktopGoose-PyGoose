@@ -42,10 +42,6 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt pyinstaller
 
-      - name: Install macOS dependencies
-        if: runner.os == 'macOS'
-        run: pip install pyobjc-framework-Quartz
-
       - name: Build
         run: python -m PyInstaller PyGoose.spec --noconfirm --clean
 
@@ -57,6 +53,11 @@ jobs:
           mkdir -p dist/PyGoose/assets/text/notepad_messages
           cp -r assets/images/memes/. dist/PyGoose/assets/images/memes/
           cp -r assets/text/notepad_messages/. dist/PyGoose/assets/text/notepad_messages/
+
+      - name: Sign .app bundle (ad-hoc)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: codesign --sign - --force --deep dist/PyGoose.app
 
       - name: Package macOS dist (.app bundle + user assets)
         if: runner.os == 'macOS'
@@ -76,7 +77,7 @@ jobs:
       - name: Archive (macOS)
         if: runner.os == 'macOS'
         shell: bash
-        run: cd dist && zip -r PyGoose-${{ github.ref_name }}-${{ matrix.platform }}.zip PyGoose
+        run: cd dist && tar -czf PyGoose-${{ github.ref_name }}-${{ matrix.platform }}.tar.gz PyGoose
 
       - name: Archive (Linux)
         if: runner.os == 'Linux'

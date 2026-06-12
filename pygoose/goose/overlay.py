@@ -18,6 +18,31 @@ QUIT_THRESHOLD       = 0.99
 QUIT_SHOW_THRESHOLD  = 0.2
 
 
+def _macos_setup_overlay():
+    lib = ctypes.CDLL('libobjc.dylib')
+
+    lib.sel_registerName.restype = ctypes.c_void_p
+    lib.sel_registerName.argtypes = [ctypes.c_char_p]
+    lib.objc_getClass.restype = ctypes.c_void_p
+    lib.objc_getClass.argtypes = [ctypes.c_char_p]
+    sel = lib.sel_registerName
+    cls = lib.objc_getClass
+
+    def send(restype, extra_argtypes, obj, sel_name, *args):
+        lib.objc_msgSend.restype = restype
+        lib.objc_msgSend.argtypes = [ctypes.c_void_p, ctypes.c_void_p] + extra_argtypes
+        return lib.objc_msgSend(obj, sel(sel_name), *args)
+
+    NSApp = send(ctypes.c_void_p, [], cls(b'NSApplication'), b'sharedApplication')
+    send(ctypes.c_bool, [ctypes.c_long], NSApp, b'setActivationPolicy:', 1)
+
+    windows = send(ctypes.c_void_p, [], NSApp, b'windows')
+    count = send(ctypes.c_ulong, [], windows, b'count')
+    for i in range(count):
+        win = send(ctypes.c_void_p, [ctypes.c_ulong], windows, b'objectAtIndex:', i)
+        send(None, [ctypes.c_bool], win, b'setIgnoresMouseEvents:', True)
+
+
 def _is_esc_held() -> bool:
     if sys.platform == "win32":
         return bool(ctypes.windll.user32.GetAsyncKeyState(VK_ESCAPE) & 0x8000)
@@ -59,10 +84,7 @@ class Overlay(QWidget):
             )
         elif sys.platform == "darwin":
             try:
-                from AppKit import NSApp, NSApplicationActivationPolicyAccessory
-                NSApp.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
-                for win in NSApp.windows():
-                    win.setIgnoresMouseEvents_(True)
+                _macos_setup_overlay()
             except Exception:
                 pass
 
