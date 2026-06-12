@@ -19,7 +19,7 @@ jobs:
             archive: zip
           - os: macos-latest
             platform: macos
-            archive: zip
+            archive: tar.gz
           - os: ubuntu-latest
             platform: linux
             archive: tar.gz
@@ -54,20 +54,22 @@ jobs:
           cp -r assets/images/memes/. dist/PyGoose/assets/images/memes/
           cp -r assets/text/notepad_messages/. dist/PyGoose/assets/text/notepad_messages/
 
-      - name: Sign .app bundle (ad-hoc)
-        if: runner.os == 'macOS'
-        shell: bash
-        run: codesign --sign - --force --deep dist/PyGoose.app
-
-      - name: Package macOS dist (.app bundle + user assets)
+      - name: Package macOS dist (launcher .app + onefile binary + user assets)
         if: runner.os == 'macOS'
         shell: bash
         run: |
+          mv dist/PyGoose dist/PyGoose_bin
+          mkdir -p dist/PyGoose/PyGoose.app/Contents/MacOS
+          cp packaging/macos/Info.plist dist/PyGoose/PyGoose.app/Contents/Info.plist
+          cp packaging/macos/launcher.sh dist/PyGoose/PyGoose.app/Contents/MacOS/launcher
+          chmod +x dist/PyGoose/PyGoose.app/Contents/MacOS/launcher
+          mv dist/PyGoose_bin dist/PyGoose/PyGoose.app/Contents/MacOS/PyGoose
+          chmod +x dist/PyGoose/PyGoose.app/Contents/MacOS/PyGoose
           mkdir -p dist/PyGoose/assets/images/memes
           mkdir -p dist/PyGoose/assets/text/notepad_messages
           cp -r assets/images/memes/. dist/PyGoose/assets/images/memes/
           cp -r assets/text/notepad_messages/. dist/PyGoose/assets/text/notepad_messages/
-          mv dist/PyGoose.app dist/PyGoose/PyGoose.app
+          codesign --sign - --force --deep dist/PyGoose/PyGoose.app
 
       - name: Archive (Windows)
         if: runner.os == 'Windows'
