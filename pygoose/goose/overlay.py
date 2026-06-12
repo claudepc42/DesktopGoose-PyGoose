@@ -59,7 +59,8 @@ class Overlay(QWidget):
             )
         elif sys.platform == "darwin":
             try:
-                from AppKit import NSApp
+                from AppKit import NSApp, NSApplicationActivationPolicyAccessory
+                NSApp.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
                 for win in NSApp.windows():
                     win.setIgnoresMouseEvents_(True)
             except Exception:

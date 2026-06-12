@@ -24,10 +24,7 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries if is_mac else [],
-    a.zipfiles if is_mac else [],
-    a.datas   if is_mac else [],
-    exclude_binaries=not is_mac,
+    exclude_binaries=True,
     name='PyGoose',
     debug=False,
     bootloader_ignore_signals=False,
@@ -41,7 +38,20 @@ exe = EXE(
     entitlements_file=None,
 )
 
-if not is_mac:
+if is_mac:
+    app = BUNDLE(
+        exe,
+        a.binaries,
+        a.zipfiles,
+        a.datas,
+        name='PyGoose.app',
+        bundle_identifier='com.pygoose.app',
+        info_plist={
+            'NSHighResolutionCapable': True,
+            'LSMinimumSystemVersion': '10.14',
+        },
+    )
+else:
     coll = COLLECT(
         exe,
         a.binaries,

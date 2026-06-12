@@ -58,18 +58,15 @@ jobs:
           cp -r assets/images/memes/. dist/PyGoose/assets/images/memes/
           cp -r assets/text/notepad_messages/. dist/PyGoose/assets/text/notepad_messages/
 
-      - name: Package macOS dist (onefile binary + user assets)
+      - name: Package macOS dist (.app bundle + user assets)
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          mv dist/PyGoose dist/PyGoose_bin
-          mkdir -p dist/PyGoose
-          mv dist/PyGoose_bin dist/PyGoose/PyGoose
-          chmod +x dist/PyGoose/PyGoose
           mkdir -p dist/PyGoose/assets/images/memes
           mkdir -p dist/PyGoose/assets/text/notepad_messages
           cp -r assets/images/memes/. dist/PyGoose/assets/images/memes/
           cp -r assets/text/notepad_messages/. dist/PyGoose/assets/text/notepad_messages/
+          mv dist/PyGoose.app dist/PyGoose/PyGoose.app
 
       - name: Archive (Windows)
         if: runner.os == 'Windows'
