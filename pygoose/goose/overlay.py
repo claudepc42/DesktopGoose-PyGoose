@@ -34,8 +34,6 @@ def _macos_setup_overlay():
         return lib.objc_msgSend(obj, sel(sel_name), *args)
 
     NSApp = send(ctypes.c_void_p, [], cls(b'NSApplication'), b'sharedApplication')
-    send(ctypes.c_bool, [ctypes.c_long], NSApp, b'setActivationPolicy:', 1)
-
     windows = send(ctypes.c_void_p, [], NSApp, b'windows')
     count = send(ctypes.c_ulong, [], windows, b'count')
     for i in range(count):
