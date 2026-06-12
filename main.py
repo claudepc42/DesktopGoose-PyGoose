@@ -1,8 +1,23 @@
 import sys
 import os
 
+# Resolve log directory: next to the .app on macOS, next to exe elsewhere
+def _log_dir():
+    if getattr(sys, 'frozen', False):
+        if sys.platform == 'darwin':
+            path = os.path.abspath(sys.executable)
+            while True:
+                parent = os.path.dirname(path)
+                if parent == path:
+                    break
+                if path.endswith('.app'):
+                    return parent
+                path = parent
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
 # File logger — line-buffered so every write survives a crash
-_log_path = os.path.join(os.path.expanduser('~'), 'pygoose_debug.log')
+_log_path = os.path.join(_log_dir(), 'pygoose_debug.log')
 _log = open(_log_path, 'w', buffering=1)
 sys.stderr = _log  # capture tracebacks too
 
