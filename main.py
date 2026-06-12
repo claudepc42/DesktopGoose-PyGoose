@@ -8,9 +8,21 @@ from pygoose.goose.goose import Goose
 from pygoose.goose.config import load_config
 
 
+def _is_ax_trusted() -> bool:
+    try:
+        import ctypes
+        appservices = ctypes.cdll.LoadLibrary(
+            '/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices'
+        )
+        appservices.AXIsProcessTrusted.restype = ctypes.c_bool
+        return bool(appservices.AXIsProcessTrusted())
+    except Exception:
+        return True
+
+
 def _request_accessibility_macos():
     try:
-        import Quartz
+        import Quartz  # noqa: F401 — needed for mouse stealing in cursor.py
     except ImportError:
         if not getattr(sys, 'frozen', False):
             msg = QMessageBox()
@@ -22,9 +34,8 @@ def _request_accessibility_macos():
                 "The goose will still run without it, but won't be able to steal your mouse."
             )
             msg.exec()
-        return
 
-    if not Quartz.AXIsProcessTrusted():
+    if not _is_ax_trusted():
         msg = QMessageBox()
         msg.setWindowTitle("Accessibility access needed")
         msg.setText(
