@@ -1,7 +1,10 @@
 import os
+import sys
 from PyQt6.QtWidgets import QTextEdit, QVBoxLayout
 from PyQt6.QtCore import Qt, pyqtSlot
 from PyQt6.QtGui import QFont, QIcon, QPainter, QColor, QPen, QFontDatabase
+
+_DEFAULT_FONT_SIZE = 30 if sys.platform == "darwin" else 25
 
 from pygoose.goose.windows.movable_window import MovableWindow
 from pygoose.engine.deck import Deck
@@ -66,7 +69,7 @@ def _handwriting_font(size: int) -> QFont:
 
 
 class NotepadWindow(MovableWindow):
-    def __init__(self, font_size: int = 25):
+    def __init__(self, font_size: int = _DEFAULT_FONT_SIZE):
         super().__init__()
         self.setWindowTitle('Goose "Not-epad"')
         self.setFixedSize(260, 200)
