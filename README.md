@@ -139,12 +139,12 @@ PyGoose/
 
 ## Developer flags
 
-For testing specific behaviors without waiting for them to appear naturally, edit the top of `pygoose/goose/goose.py`:
+For testing specific behaviors without waiting for them to appear naturally, edit `config.ini` and restart:
 
-```python
-DEV_FORCE_TASK = None          # Force a specific task every time (e.g. "sleep")
-DEV_SHORT_WANDER = False       # Wander lasts only 3 seconds
-DEV_FORCE_FAKE_SLEEP = False   # Always fake sleep instead of 15% chance
+```ini
+DEV_ForceTask = collect_window_notepad  ; force a specific task every time (blank to disable)
+DEV_ShortWander = True                  ; wander lasts only 3 seconds
+DEV_ForceFakeSleep = True               ; always fake sleep instead of 15% chance
 ```
 
 ---

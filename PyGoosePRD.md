@@ -1338,21 +1338,7 @@ Use a Deck for selection (no repeats until all shown). The Deck is module-level 
 
 GIFs must animate — use `QMovie` for animated GIF playback inside a `QLabel`.
 
-### 23.2 Fallback URLs
-
-If no local images found, fall back to fetching one of these hardcoded URLs:
-
-```python
-FALLBACK_URLS = [
-    "https://preview.redd.it/dsfjv8aev0p31.png?...",
-    "https://i.redd.it/4ojv59zvglp31.jpg",
-    "https://i.redd.it/4bamd6lnso241.jpg",
-    "https://i.redd.it/5i5et9p1vsp31.jpg",
-    "https://i.redd.it/j2f1i9djx5p31.jpg",
-]
-```
-
-### 23.3 Window appearance
+### 23.2 Window appearance
 
 - Size: 400×400 px
 - No title bar text
@@ -1531,19 +1517,21 @@ Mods load only when `config.enable_mods = True`. Loaded alphabetically. Bad mods
 
 ## 28. Developer Flags
 
-Three global flags in `goose.py` for testing specific behaviors without waiting for them to appear naturally:
+Three flags in `config.ini` for testing specific behaviors without waiting for them to appear naturally. Edit the file and restart — do not hardcode these in source.
 
-```python
-DEV_FORCE_TASK = None          # Set to a Task name string (e.g. "sleep") to force that task always
-DEV_SHORT_WANDER = False       # Wander lasts only 3 seconds instead of config range
-DEV_FORCE_FAKE_SLEEP = False   # 100% fake sleep instead of 15% chance
+```ini
+DEV_ForceTask = collect_window_notepad  ; force a specific task every time (blank to disable)
+DEV_ShortWander = True                  ; wander lasts only 3 seconds
+DEV_ForceFakeSleep = True               ; always fake sleep instead of 15% chance
 ```
 
-`DEV_FORCE_TASK` is checked in `_choose_next_task()` — if set, bypasses the deck entirely.
-`DEV_SHORT_WANDER` is checked in `_get_random_wander_duration()`.
-`DEV_FORCE_FAKE_SLEEP` is checked during the SETTLING→SLEEPING transition.
+`DEV_ForceTask` is checked in `_choose_next_task()` — if set, bypasses the deck entirely.
+`DEV_ShortWander` is checked in `_get_random_wander_duration()`.
+`DEV_ForceFakeSleep` is checked during the SETTLING→SLEEPING transition.
 
-Additionally, when `DEV_FORCE_TASK` is set, the SLEEP task always uses the top-left corner instead of a random corner.
+Additionally, when `DEV_ForceTask` is set, the SLEEP task always uses the top-left corner instead of a random corner.
+
+Clear all three before pushing a stable version tag.
 
 ---
 
@@ -1613,7 +1601,7 @@ App must not crash if sound files are missing — log a warning and continue.
 | 5 | Footmarks | TrackMud task works. Brown dots appear and fade. |
 | 6 | NabMouse | Cursor gets grabbed and dragged. All 3 platforms. |
 | 7 | Notepad window | Window spawns with custom font. Goose drags it. Early close triggers NabMouse. |
-| 8 | Meme window | Image/GIF window spawns. GIF animates. Fallback URLs work. |
+| 8 | Meme window | Image/GIF window spawns. GIF animates. |
 | 9 | WatchMouse | Goose sits near cursor, bobs, occasionally honks. Petting while sitting has three outcomes. |
 | 10 | FollowMouse | Goose follows cursor at preferred distance. Flees if too close. Honk marches. |
 | 11 | SneakAttack | Goose creeps in crawl pose, pounces, grabs. |

@@ -35,9 +35,6 @@ def _request_accessibility_macos():
 def _detach_from_terminal():
     """Ignore SIGHUP so closing Terminal can't kill the goose, then fire osascript
     to close the Terminal window once the app is running."""
-    if not sys.stdout.isatty():
-        return
-    import os
     import signal
     import subprocess
     signal.signal(signal.SIGHUP, signal.SIG_IGN)

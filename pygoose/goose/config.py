@@ -22,6 +22,9 @@ class GooseConfig:
     max_wandering_time_seconds: float = 40.0
     first_wander_time_seconds: float = 20.0
     notepad_font_size: int = 25
+    dev_force_task: str = ""
+    dev_short_wander: bool = False
+    dev_force_fake_sleep: bool = False
 
 
 def _warn(msg: str):
@@ -53,6 +56,9 @@ def _save(cfg: GooseConfig, path: str):
         "MaxWanderingTimeSeconds":  str(cfg.max_wandering_time_seconds),
         "FirstWanderTimeSeconds":   str(cfg.first_wander_time_seconds),
         "NotepadFontSize":          str(cfg.notepad_font_size),
+        "DEV_ForceTask":            cfg.dev_force_task,
+        "DEV_ShortWander":          str(cfg.dev_short_wander),
+        "DEV_ForceFakeSleep":       str(cfg.dev_force_fake_sleep),
     }
     with open(path, "w") as f:
         parser.write(f)
@@ -89,6 +95,9 @@ def load_config() -> GooseConfig:
             max_wandering_time_seconds=float(g.get("MaxWanderingTimeSeconds", 40.0)),
             first_wander_time_seconds=float(g.get("FirstWanderTimeSeconds", 20.0)),
             notepad_font_size=int(g.get("NotepadFontSize", 25)),
+            dev_force_task=g.get("DEV_ForceTask", "").strip(),
+            dev_short_wander=g.getboolean("DEV_ShortWander", False),
+            dev_force_fake_sleep=g.getboolean("DEV_ForceFakeSleep", False),
         )
 
     except Exception as e:

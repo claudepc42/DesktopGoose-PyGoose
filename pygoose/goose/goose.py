@@ -5,10 +5,6 @@ import random
 _math = math
 _random = random
 
-# Dev testing flags — set DEV_FORCE_TASK to a Task name string to force that task, or None for normal
-DEV_FORCE_TASK = None
-DEV_SHORT_WANDER = False
-DEV_FORCE_FAKE_SLEEP = False
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -790,7 +786,7 @@ class Goose:
                 Vector2(self.screen_w - SLEEP_CORNER_MARGIN, SLEEP_CORNER_MARGIN),
                 Vector2(self.screen_w - SLEEP_CORNER_MARGIN, self.screen_h - SLEEP_CORNER_MARGIN),
             ]
-            nest = corners[0] if DEV_FORCE_TASK else _random.choice(corners)
+            nest = corners[0] if self.config.dev_force_task else _random.choice(corners)
             nest += Vector2(random_range(-15, 15), random_range(-15, 15))
             self.task_sleep = SleepState(
                 nest_pos=nest,
@@ -851,8 +847,8 @@ class Goose:
             )
 
     def _choose_next_task(self):
-        if DEV_FORCE_TASK:
-            self._set_task(Task(DEV_FORCE_TASK))
+        if self.config.dev_force_task:
+            self._set_task(Task(self.config.dev_force_task))
             return
         task = TASK_WEIGHTED_LIST[self.task_picker_deck.next()]
         # Skip unimplemented tasks — fall back to wander
@@ -865,7 +861,7 @@ class Goose:
         self._set_task(task)
 
     def _get_random_wander_duration(self) -> float:
-        if DEV_SHORT_WANDER:
+        if self.config.dev_short_wander:
             return 3.0
         if self.config:
             return random_range(
@@ -1437,7 +1433,7 @@ class Goose:
 
             if elapsed >= SLEEP_SETTLE_DURATION:
                 s.wake_time = t + random_range(SLEEP_MIN_DURATION, SLEEP_MAX_DURATION)
-                s.is_fake_sleep = DEV_FORCE_FAKE_SLEEP or _random.random() < 0.15
+                s.is_fake_sleep = self.config.dev_force_fake_sleep or _random.random() < 0.15
                 if s.is_fake_sleep:
                     s.next_eye_event_time = t + random_range(5.0, 15.0)
                 s.stage = SleepStage.SLEEPING
