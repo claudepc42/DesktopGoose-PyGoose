@@ -8,17 +8,20 @@ from pygoose.engine.deck import Deck
 from pygoose.paths import resource_path, user_data_path
 
 _fonts_loaded = False
+_app_font_families: list[str] = []
 _notepad_deck: "Deck | None" = None
 
 def _load_fonts():
-    global _fonts_loaded
+    global _fonts_loaded, _app_font_families
     if _fonts_loaded:
         return
     fonts_dir = resource_path("assets", "fonts")
     if os.path.isdir(fonts_dir):
         for fname in os.listdir(fonts_dir):
             if fname.lower().endswith((".ttf", ".otf")):
-                QFontDatabase.addApplicationFont(os.path.join(fonts_dir, fname))
+                font_id = QFontDatabase.addApplicationFont(os.path.join(fonts_dir, fname))
+                if font_id >= 0:
+                    _app_font_families.extend(QFontDatabase.applicationFontFamilies(font_id))
     _fonts_loaded = True
 
 PAD_YELLOW = QColor(0xFF, 0xF0, 0x80)
@@ -47,11 +50,10 @@ def _load_phrases() -> list[str]:
 
 def _handwriting_font(size: int) -> QFont:
     _load_fonts()
-    families = QFontDatabase.families()
-    for family in families:
-        if "fonty" in family.lower() or "notestar" in family.lower():
-            return QFont(family, size)
+    if _app_font_families:
+        return QFont(_app_font_families[0], size)
     import sys
+    families = QFontDatabase.families()
     if sys.platform == "darwin":
         for name in ("Chalkboard SE", "Marker Felt", "Noteworthy", "Bradley Hand", "Comic Sans MS"):
             if name in families:
