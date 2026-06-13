@@ -41,8 +41,13 @@ def _detach_from_terminal():
     import signal
     import subprocess
     signal.signal(signal.SIGHUP, signal.SIG_IGN)
-    subprocess.Popen(['osascript', '-e',
-        'delay 1\ntell application "Terminal" to do script "exit" in front window'])
+    win_id = subprocess.run(
+        ['osascript', '-e', 'tell application "Terminal" to get id of front window'],
+        capture_output=True, text=True
+    ).stdout.strip()
+    if win_id:
+        subprocess.Popen(['osascript', '-e',
+            f'delay 1\ntell application "Terminal" to do script "exit" in tab 1 of (first window whose id is {win_id})'])
 
 
 def main():
