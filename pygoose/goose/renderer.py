@@ -186,9 +186,9 @@ def render_goose(painter: QPainter, rig: Rig, position: Vector2, direction: floa
         painter.drawEllipse(_pt(left_eye), 2.0, 2.0)
         painter.drawEllipse(_pt(right_eye), 2.0, 2.0)
     elif rig.peek_eye == 1:
-        painter.drawEllipse(_pt(left_eye), 2.0, 2.0)
+        painter.drawEllipse(_pt(left_eye), 2.0, 0.8)
     elif rig.peek_eye == 2:
-        painter.drawEllipse(_pt(right_eye), 2.0, 2.0)
+        painter.drawEllipse(_pt(right_eye), 2.0, 0.8)
 
     # 7. Sleep bubbles
     if rig.show_sleep_bubbles:

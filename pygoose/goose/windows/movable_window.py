@@ -17,11 +17,8 @@ class MovableWindow(QWidget):
     def showEvent(self, event):
         super().showEvent(event)
         if sys.platform == "darwin":
-            try:
-                from pygoose.goose.overlay import _macos_setup_overlay
-                _macos_setup_overlay()
-            except Exception:
-                pass
+            from pygoose.goose.overlay import _macos_fix_hides_on_deactivate
+            _macos_fix_hides_on_deactivate()
 
     def move_threadsafe(self, x: int, y: int):
         QMetaObject.invokeMethod(

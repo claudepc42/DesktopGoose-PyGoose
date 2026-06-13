@@ -51,9 +51,15 @@ def _handwriting_font(size: int) -> QFont:
     for family in families:
         if "fonty" in family.lower() or "notestar" in family.lower():
             return QFont(family, size)
-    for name in ("Segoe Print", "Comic Sans MS"):
-        if name in families:
-            return QFont(name, size)
+    import sys
+    if sys.platform == "darwin":
+        for name in ("Chalkboard SE", "Marker Felt", "Noteworthy", "Bradley Hand", "Comic Sans MS"):
+            if name in families:
+                return QFont(name, size)
+    else:
+        for name in ("Segoe Print", "Comic Sans MS"):
+            if name in families:
+                return QFont(name, size)
     return QFont("", size)
 
 
