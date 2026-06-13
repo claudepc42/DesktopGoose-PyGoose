@@ -33,18 +33,32 @@ def _request_accessibility_macos():
 
 
 def _detach_from_terminal():
-    """Ignore SIGHUP so closing Terminal can't kill the goose, then fire osascript
-    to close the Terminal window once the app is running."""
+    """Kill the parent shell so Terminal closes its window.
+
+    Only runs for frozen binaries (Finder-launched). When a developer runs
+    `python main.py` their shell IS our PPID — we must not kill it.
+
+    SIGHUP rather than SIGTERM: the shell exits as if its terminal closed,
+    which triggers Terminal's "close window on shell exit" behavior. SIGTERM
+    exits with code 143 (non-clean) and may leave a "Process completed" banner.
+    """
+    if not getattr(sys, 'frozen', False):
+        return
     import signal
-    import subprocess
+    import threading
+    import os
     signal.signal(signal.SIGHUP, signal.SIG_IGN)
-    win_id = subprocess.run(
-        ['osascript', '-e', 'tell application "Terminal" to get id of front window'],
-        capture_output=True, text=True
-    ).stdout.strip()
-    if win_id:
-        subprocess.Popen(['osascript', '-e',
-            f'delay 1\ntell application "Terminal" to do script "exit" in tab 1 of (first window whose id is {win_id})'])
+    ppid = os.getppid()
+
+    def _kill_shell():
+        import time
+        time.sleep(1)
+        try:
+            os.kill(ppid, signal.SIGHUP)
+        except ProcessLookupError:
+            pass
+
+    threading.Thread(target=_kill_shell, daemon=True).start()
 
 
 def main():
