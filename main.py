@@ -40,14 +40,16 @@ def _detach_from_terminal():
         return
     import os
     import subprocess
-    print("\033[1;31m▶ PyGoose is loading — you can close this window.\033[0m", flush=True)
-    print("\033[1;31m  To quit once running: hold Escape for 5 seconds.\033[0m", flush=True)
     subprocess.Popen(
         [sys.executable],
         preexec_fn=os.setpgrp,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+    )
+    subprocess.Popen(
+        ['osascript', '-e',
+         'tell application "Terminal" to close front window']
     )
     sys.exit(0)
 
