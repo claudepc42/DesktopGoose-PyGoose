@@ -33,28 +33,20 @@ def _request_accessibility_macos():
 
 
 def _detach_from_terminal():
-    """Fork so the child inherits all process context (audio session, window server)
-    and detaches from the terminal via setsid. Parent exits cleanly so the shell
-    regains its prompt, then osascript types 'exit' to close the Terminal window."""
+    """If launched from a terminal (e.g. Finder double-click), detach so closing
+    the terminal window doesn't kill the goose."""
     if not sys.stdout.isatty():
         return
     import os
     import subprocess
-
-    pid = os.fork()
-    if pid > 0:
-        # Parent: let the shell regain its prompt, then close the Terminal window.
-        subprocess.Popen(['osascript', '-e',
-            'delay 0.3\ntell application "Terminal" to do script "exit" in front window'])
-        os._exit(0)
-
-    # Child: detach from the controlling terminal and silence stdio.
-    os.setsid()
-    devnull = open(os.devnull, 'r+')
-    os.dup2(devnull.fileno(), 0)
-    os.dup2(devnull.fileno(), 1)
-    os.dup2(devnull.fileno(), 2)
-    devnull.close()
+    subprocess.Popen(
+        [sys.executable],
+        preexec_fn=os.setpgrp,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    sys.exit(0)
 
 
 def main():
