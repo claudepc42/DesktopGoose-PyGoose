@@ -56,10 +56,13 @@ def _save(cfg: GooseConfig, path: str):
         "MaxWanderingTimeSeconds":  str(cfg.max_wandering_time_seconds),
         "FirstWanderTimeSeconds":   str(cfg.first_wander_time_seconds),
         "NotepadFontSize":          str(cfg.notepad_font_size),
-        "DEV_ForceTask":            cfg.dev_force_task,
-        "DEV_ShortWander":          str(cfg.dev_short_wander),
-        "DEV_ForceFakeSleep":       str(cfg.dev_force_fake_sleep),
     }
+    if cfg.dev_force_task:
+        parser["Goose"]["DEV_ForceTask"] = cfg.dev_force_task
+    if cfg.dev_short_wander:
+        parser["Goose"]["DEV_ShortWander"] = str(cfg.dev_short_wander)
+    if cfg.dev_force_fake_sleep:
+        parser["Goose"]["DEV_ForceFakeSleep"] = str(cfg.dev_force_fake_sleep)
     with open(path, "w") as f:
         parser.write(f)
 
