@@ -49,7 +49,7 @@ def _detach_from_terminal():
     )
     subprocess.Popen(
         ['osascript', '-e',
-         'tell application "Terminal" to close front window']
+         'tell application "Terminal" to do script "exit" in front window']
     )
     sys.exit(0)
 
