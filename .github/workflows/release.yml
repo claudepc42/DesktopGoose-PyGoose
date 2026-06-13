@@ -56,24 +56,24 @@ jobs:
       - name: Archive (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: Compress-Archive -Path dist/PyGoose -DestinationPath dist/PyGoose-${{ github.ref_name }}-${{ matrix.platform }}.zip
+        run: Compress-Archive -Path dist/PyGoose -DestinationPath dist/DesktopGoose-PyGoose-${{ github.ref_name }}-${{ matrix.platform }}.zip
 
       - name: Archive (macOS)
         if: runner.os == 'macOS'
         shell: bash
-        run: cd dist && tar -czf PyGoose-${{ github.ref_name }}-${{ matrix.platform }}.tar.gz PyGoose
+        run: cd dist && tar -czf DesktopGoose-PyGoose-${{ github.ref_name }}-${{ matrix.platform }}.tar.gz PyGoose
 
       - name: Archive (Linux)
         if: runner.os == 'Linux'
         shell: bash
-        run: cd dist && tar -czf PyGoose-${{ github.ref_name }}-${{ matrix.platform }}.tar.gz PyGoose
+        run: cd dist && tar -czf DesktopGoose-PyGoose-${{ github.ref_name }}-${{ matrix.platform }}.tar.gz PyGoose
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/PyGoose-${{ github.ref_name }}-${{ matrix.platform }}.zip
-            dist/PyGoose-${{ github.ref_name }}-${{ matrix.platform }}.tar.gz
+            dist/DesktopGoose-PyGoose-${{ github.ref_name }}-${{ matrix.platform }}.zip
+            dist/DesktopGoose-PyGoose-${{ github.ref_name }}-${{ matrix.platform }}.tar.gz
 
   source:
     runs-on: ubuntu-latest
@@ -84,7 +84,7 @@ jobs:
       - name: Create source archive
         shell: bash
         run: |
-          zip -r PyGoose-${{ github.ref_name }}-python-source.zip . \
+          zip -r DesktopGoose-PyGoose-${{ github.ref_name }}-python-source.zip . \
             --exclude '.git/*' \
             --exclude 'dist/*' \
             --exclude 'build/*' \
@@ -96,4 +96,4 @@ jobs:
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
-          files: PyGoose-${{ github.ref_name }}-python-source.zip
+          files: DesktopGoose-PyGoose-${{ github.ref_name }}-python-source.zip

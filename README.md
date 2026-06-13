@@ -1,4 +1,4 @@
-# PyGoose
+# Desktop Goose: Python Edition
 
 A Python/PyQt6 reimplementation of [samperson's Desktop Goose](https://samperson.itch.io/desktop-goose) — a chaotic little goose that wanders your screen, steals your mouse, and leaves you passive-aggressive notes.
 
