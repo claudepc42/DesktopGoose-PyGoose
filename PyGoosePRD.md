@@ -1363,7 +1363,6 @@ class MovableWindow(QWidget):
     @pyqtSlot(int, int)
     def _do_move(self, x, y):
         self.move(x, y)
-        self.raise_()
 
     def closeEvent(self, event):
         self.closing.emit()
@@ -1739,39 +1738,24 @@ Output lands in `dist/PyGoose/`. The build script should also copy a blank `conf
 
 ## 35. Future Feature Ideas / Backlog
 
-Ideas to revisit when the core is solid. Not yet designed or prioritized.
+Feature backlog is maintained in `CLAUDE.md` (local only, not in git). Items move here once implemented.
 
-### 35.1 Click zone reactions (body vs. head)
-
-Currently all petting clicks within 30px of the goose head trigger the same NAB_MOUSE response. The idea is to differentiate based on which part of the body was actually clicked:
-
-- **Click head:** Current behavior — goose bites the cursor and runs away with it (NAB_MOUSE)
-- **Click body:** Different reaction, leaning toward a honk and possibly a short startled wander, or some other annoyed-but-not-attacking response
-
-Implementation notes to figure out: define a head hit zone (ellipse around `neck_head_point`/`head1_end_point`) vs. a body hit zone (ellipse around `body_center`). The zones may need to expand/shrink with the rig pose. The distinction between "annoyed honk" and "full attack" gives the goose more personality and makes clicking feel reactive rather than always punishing.
-
-### 35.2 Window cleanup (two-window limit with eviction drag) — **Implemented in 0.33**
+### 35.1 Window cleanup (two-window limit with eviction drag) — **Implemented in 0.33**
 
 The goose keeps up to 2 notepad and 2 meme windows on screen (per type, independent pools). When a 3rd would be added, a random existing window of that type is evicted first — the goose walks to its edge, grabs it, drags it offscreen, and then fetches the new window normally. See §15 for full implementation details.
 
-**Remaining open item:** A shredder/destruction sound on eviction would add personality. Currently no sound plays when the evicted window disappears — honk+chomp layered would be a reasonable placeholder until a dedicated asset exists.
+---
 
-### 35.3 Floating draggable menu button
+## 36. Development Workflow Guardrails
 
-A small always-on-top UI element — something like a subtle icon or pill — that floats on screen and can be dragged to any corner or position. Clicking it would open a quick-access menu (pause, quit, config, etc.) as an alternative to the ESC hold mechanic and as a discoverable entry point for users who don't know the keyboard shortcut.
-
-**Motivation:** ESC-hold is not obvious to new users and requires keyboard access. A persistent but unobtrusive button gives a visual affordance without cluttering the screen. The draggable aspect lets users tuck it out of the way.
-
-**Open questions:**
-- Should this be a separate window/widget from the overlay, or painted on top of it?
-- What menu items make sense at launch: quit, pause/resume, config file location?
-- How small can the button be before it's too easy to miss vs. too intrusive? A 32×32 or 40×40 icon is a reasonable starting point.
-- Should the button auto-hide after a period of inactivity and re-appear on mouse-near?
+See `CLAUDE.md` → **Pending fixes** → "Git push hook" for the planned `PreToolUse` hook that will enforce the no-unauthorized-push rule at the harness level.
 
 ---
 
-## 36. Known Issues / Needs Investigation
+## 37. Known Issues / Needs Investigation
 
-### 36.1 ESC quit unreliable in packaged exe
+Active bug tracking lives in `CLAUDE.md` → **Pending fixes**. Items move here once resolved.
 
-ESC-hold to quit works correctly when running from source (`python main.py`) but is only partially functional in the PyInstaller-built `dist\PyGoose\PyGoose.exe`. Root cause not yet investigated. May relate to `GetAsyncKeyState` permissions, focus behavior of the bootloader process, or the overlay window not being properly foregrounded in the frozen build.
+### 37.1 macOS window appear/disappear asymmetry — see CLAUDE.md
+
+### 37.2 ESC quit unreliable in packaged exe — see CLAUDE.md

@@ -24,6 +24,7 @@ class GooseConfig:
     notepad_font_size: int = 32 if __import__('sys').platform == "darwin" else 25
     dev_force_task: str = ""
     dev_short_wander: bool = False
+    dev_skip_wander: bool = False
     dev_force_fake_sleep: bool = False
 
 
@@ -61,6 +62,8 @@ def _save(cfg: GooseConfig, path: str):
         parser["Goose"]["DEV_ForceTask"] = cfg.dev_force_task
     if cfg.dev_short_wander:
         parser["Goose"]["DEV_ShortWander"] = str(cfg.dev_short_wander)
+    if cfg.dev_skip_wander:
+        parser["Goose"]["DEV_SkipWander"] = str(cfg.dev_skip_wander)
     if cfg.dev_force_fake_sleep:
         parser["Goose"]["DEV_ForceFakeSleep"] = str(cfg.dev_force_fake_sleep)
     with open(path, "w") as f:
@@ -100,6 +103,7 @@ def load_config() -> GooseConfig:
             notepad_font_size=int(g.get("NotepadFontSize", 25)),
             dev_force_task=g.get("DEV_ForceTask", "").strip(),
             dev_short_wander=g.getboolean("DEV_ShortWander", False),
+            dev_skip_wander=g.getboolean("DEV_SkipWander", False),
             dev_force_fake_sleep=g.getboolean("DEV_ForceFakeSleep", False),
         )
 

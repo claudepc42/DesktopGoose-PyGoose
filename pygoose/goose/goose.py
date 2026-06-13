@@ -861,6 +861,8 @@ class Goose:
         self._set_task(task)
 
     def _get_random_wander_duration(self) -> float:
+        if self.config.dev_skip_wander:
+            return 0.0
         if self.config.dev_short_wander:
             return 3.0
         if self.config:
