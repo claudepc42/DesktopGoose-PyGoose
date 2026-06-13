@@ -22,7 +22,7 @@ class GooseConfig:
     max_wandering_time_seconds: float = 40.0
     first_wander_time_seconds: float = 20.0
     notepad_font_size: int = 25
-    dev_force_task: str = ""
+    dev_force_task: str = "collect_window_notepad"
     dev_short_wander: bool = False
     dev_force_fake_sleep: bool = False
 
