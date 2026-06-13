@@ -115,10 +115,7 @@ class CollectWindowStage(Enum):
     EVICTING_WINDOW = "evicting_window"
     WALKING_OFFSCREEN = "walking_offscreen"
     WAITING_TO_BRING_WINDOW_BACK = "waiting_to_bring_window_back"
-    SHOWING_WINDOW = "showing_window"
     DRAGGING_WINDOW_BACK = "dragging_window_back"
-
-_WINDOW_SHOW_DELAY = 0.4 if __import__('sys').platform == "darwin" else 0.0
 
 WAIT_TIME_MIN = 2.0
 WAIT_TIME_MAX = 3.5
@@ -132,6 +129,7 @@ class CollectWindowState:
     wait_start_time: float = 0.0
     secs_to_wait: float = 0.0
     window_closed_early: bool = False
+    window_shown: bool = False               # True once show_dialog has been called
     window_type: str = ""                    # "meme" or "notepad"
     evict_window: object = None              # existing window being dragged off
     evict_window_offset: Vector2 = field(default_factory=lambda: Vector2(0.0, 0.0))
@@ -1041,7 +1039,14 @@ class Goose:
             else:
                 self.override_extend_neck = True
                 window_pos = self.rig.head2_end_point - c.evict_window_offset
-                c.evict_window.move_threadsafe(int(window_pos.x), int(window_pos.y))
+                wx, wy = int(window_pos.x), int(window_pos.y)
+                ew = c.evict_window
+                at_edge = wx < 0 or wx > self.screen_w - ew.width()
+                if at_edge:
+                    if ew.isVisible():
+                        ew.hide()
+                else:
+                    ew.move_threadsafe(wx, wy)
 
         elif c.stage == CollectWindowStage.WALKING_OFFSCREEN:
             if Vector2.distance(self.position, self.target_pos) < 5.0:
@@ -1053,7 +1058,6 @@ class Goose:
             self.velocity = Vector2(0.0, 0.0)
             if t - c.wait_start_time > c.secs_to_wait:
                 c.main_window.closing.connect(self._on_window_closed_early)
-                QMetaObject.invokeMethod(c.main_window, "show_dialog", Qt.ConnectionType.QueuedConnection)
 
                 d = c.screen_direction
                 w = float(c.main_window.width())
@@ -1087,12 +1091,6 @@ class Goose:
                     clamp(tx, w + 55, self.screen_w - w - 55),
                     clamp(ty, h + 80, self.screen_h),
                 )
-                c.wait_start_time = t
-                c.stage = CollectWindowStage.SHOWING_WINDOW
-
-        elif c.stage == CollectWindowStage.SHOWING_WINDOW:
-            self.velocity = Vector2(0.0, 0.0)
-            if t - c.wait_start_time >= _WINDOW_SHOW_DELAY:
                 c.stage = CollectWindowStage.DRAGGING_WINDOW_BACK
 
         elif c.stage == CollectWindowStage.DRAGGING_WINDOW_BACK:
@@ -1111,7 +1109,13 @@ class Goose:
 
             self.override_extend_neck = True
             window_pos = self.rig.head2_end_point - c.window_offset_to_beak
-            c.main_window.move_threadsafe(int(window_pos.x), int(window_pos.y))
+            wx, wy = int(window_pos.x), int(window_pos.y)
+            win_w = c.main_window.width()
+            if not c.window_shown and wx > -win_w // 2:
+                QMetaObject.invokeMethod(c.main_window, "show_dialog", Qt.ConnectionType.QueuedConnection)
+                c.window_shown = True
+            if c.window_shown:
+                c.main_window.move_threadsafe(wx, wy)
 
     def _on_window_closed_early(self):
         if self.task_collect_window:
