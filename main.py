@@ -33,20 +33,16 @@ def _request_accessibility_macos():
 
 
 def _detach_from_terminal():
-    """If launched from a terminal (e.g. Finder double-click), detach so closing
-    the terminal window doesn't kill the goose."""
+    """Ignore SIGHUP so closing Terminal can't kill the goose, then fire osascript
+    to close the Terminal window once the app is running."""
     if not sys.stdout.isatty():
         return
     import os
+    import signal
     import subprocess
-    subprocess.Popen(
-        [sys.executable],
-        preexec_fn=os.setpgrp,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    sys.exit(0)
+    signal.signal(signal.SIGHUP, signal.SIG_IGN)
+    subprocess.Popen(['osascript', '-e',
+        'delay 1\ntell application "Terminal" to do script "exit" in front window'])
 
 
 def main():
