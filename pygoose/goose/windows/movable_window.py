@@ -31,7 +31,6 @@ class MovableWindow(QWidget):
     @pyqtSlot(int, int)
     def _do_move(self, x: int, y: int):
         self.move(x, y)
-        self.raise_()
 
     def closeEvent(self, event: QCloseEvent):
         self.closing.emit()
