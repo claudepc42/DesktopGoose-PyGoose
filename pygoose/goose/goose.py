@@ -129,7 +129,6 @@ class CollectWindowState:
     wait_start_time: float = 0.0
     secs_to_wait: float = 0.0
     window_closed_early: bool = False
-    window_shown: bool = False               # True once show_dialog has been called
     window_type: str = ""                    # "meme" or "notepad"
     evict_window: object = None              # existing window being dragged off
     evict_window_offset: Vector2 = field(default_factory=lambda: Vector2(0.0, 0.0))
@@ -1039,14 +1038,7 @@ class Goose:
             else:
                 self.override_extend_neck = True
                 window_pos = self.rig.head2_end_point - c.evict_window_offset
-                wx, wy = int(window_pos.x), int(window_pos.y)
-                ew = c.evict_window
-                at_edge = wx < 0 or wx > self.screen_w - ew.width()
-                if at_edge:
-                    if ew.isVisible():
-                        ew.hide()
-                else:
-                    ew.move_threadsafe(wx, wy)
+                c.evict_window.move_threadsafe(int(window_pos.x), int(window_pos.y))
 
         elif c.stage == CollectWindowStage.WALKING_OFFSCREEN:
             if Vector2.distance(self.position, self.target_pos) < 5.0:
@@ -1058,6 +1050,7 @@ class Goose:
             self.velocity = Vector2(0.0, 0.0)
             if t - c.wait_start_time > c.secs_to_wait:
                 c.main_window.closing.connect(self._on_window_closed_early)
+                QMetaObject.invokeMethod(c.main_window, "show_dialog", Qt.ConnectionType.QueuedConnection)
 
                 d = c.screen_direction
                 w = float(c.main_window.width())
@@ -1109,13 +1102,7 @@ class Goose:
 
             self.override_extend_neck = True
             window_pos = self.rig.head2_end_point - c.window_offset_to_beak
-            wx, wy = int(window_pos.x), int(window_pos.y)
-            win_w = c.main_window.width()
-            if not c.window_shown and wx > -win_w // 2:
-                QMetaObject.invokeMethod(c.main_window, "show_dialog", Qt.ConnectionType.QueuedConnection)
-                c.window_shown = True
-            if c.window_shown:
-                c.main_window.move_threadsafe(wx, wy)
+            c.main_window.move_threadsafe(int(window_pos.x), int(window_pos.y))
 
     def _on_window_closed_early(self):
         if self.task_collect_window:
