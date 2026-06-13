@@ -150,4 +150,3 @@ class MemeWindow(MovableWindow):
     @pyqtSlot()
     def show_dialog(self):
         self.show()
-        self.raise_()
