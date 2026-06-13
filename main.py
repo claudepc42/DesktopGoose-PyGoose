@@ -38,12 +38,13 @@ def _detach_from_terminal():
     the terminal-attached process; Terminal closes itself when it exits cleanly."""
     if not sys.stdout.isatty():
         return
+    import os
     import subprocess
-    print("\033[1;31m▶ PyGoose is loading — this window will close shortly.\033[0m", flush=True)
+    print("\033[1;31m▶ PyGoose is loading — you can close this window.\033[0m", flush=True)
     print("\033[1;31m  To quit once running: hold Escape for 5 seconds.\033[0m", flush=True)
     subprocess.Popen(
         [sys.executable],
-        start_new_session=True,
+        preexec_fn=os.setpgrp,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,

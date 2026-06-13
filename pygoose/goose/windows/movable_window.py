@@ -1,3 +1,4 @@
+import sys
 from PyQt6.QtWidgets import QWidget
 from PyQt6.QtCore import Qt, pyqtSignal, pyqtSlot, QMetaObject, Q_ARG
 from PyQt6.QtGui import QCloseEvent
@@ -12,6 +13,15 @@ class MovableWindow(QWidget):
             Qt.WindowType.WindowStaysOnTopHint |
             Qt.WindowType.Tool
         )
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if sys.platform == "darwin":
+            try:
+                from pygoose.goose.overlay import _macos_setup_overlay
+                _macos_setup_overlay()
+            except Exception:
+                pass
 
     def move_threadsafe(self, x: int, y: int):
         QMetaObject.invokeMethod(
