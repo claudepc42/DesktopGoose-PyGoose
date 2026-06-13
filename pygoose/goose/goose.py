@@ -115,7 +115,10 @@ class CollectWindowStage(Enum):
     EVICTING_WINDOW = "evicting_window"
     WALKING_OFFSCREEN = "walking_offscreen"
     WAITING_TO_BRING_WINDOW_BACK = "waiting_to_bring_window_back"
+    SHOWING_WINDOW = "showing_window"
     DRAGGING_WINDOW_BACK = "dragging_window_back"
+
+_WINDOW_SHOW_DELAY = 0.4 if __import__('sys').platform == "darwin" else 0.0
 
 WAIT_TIME_MIN = 2.0
 WAIT_TIME_MAX = 3.5
@@ -1084,6 +1087,12 @@ class Goose:
                     clamp(tx, w + 55, self.screen_w - w - 55),
                     clamp(ty, h + 80, self.screen_h),
                 )
+                c.wait_start_time = t
+                c.stage = CollectWindowStage.SHOWING_WINDOW
+
+        elif c.stage == CollectWindowStage.SHOWING_WINDOW:
+            self.velocity = Vector2(0.0, 0.0)
+            if t - c.wait_start_time >= _WINDOW_SHOW_DELAY:
                 c.stage = CollectWindowStage.DRAGGING_WINDOW_BACK
 
         elif c.stage == CollectWindowStage.DRAGGING_WINDOW_BACK:
