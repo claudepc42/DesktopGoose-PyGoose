@@ -48,13 +48,24 @@ pygoose/
 ├── goose/
 │   ├── __init__.py
 │   ├── game.py                    # Main game loop (Init, Update, Render)
-│   ├── goose.py                   # TheGoose: state machine, physics, rendering
+│   ├── goose.py                   # Goose class: physics, dispatch tables, petting/anger checks
 │   ├── renderer.py                # Pure drawing functions (update_rig, render_goose, etc.)
 │   ├── config.py                  # GooseConfig: load/save config.ini
 │   ├── sound.py                   # Sound: honk, chomp, pat, mud squish
 │   ├── overlay.py                 # Transparent always-on-top Qt window
 │   ├── cursor.py                  # Platform cursor clip/release/query helpers
 │   ├── mod_loader.py              # Plugin discovery and loading
+│   ├── behaviors/                 # One file per behavior (see §12.5)
+│   │   ├── __init__.py
+│   │   ├── wander.py
+│   │   ├── track_mud.py
+│   │   ├── nab_mouse.py
+│   │   ├── watch_mouse.py
+│   │   ├── follow_mouse.py
+│   │   ├── sneak_attack.py
+│   │   ├── sleep.py
+│   │   ├── peek_back.py
+│   │   └── collect_window.py
 │   └── windows/
 │       ├── __init__.py
 │       ├── notepad_window.py      # SimpleTextForm equivalent
@@ -693,16 +704,15 @@ class Task(Enum):
     NAB_MOUSE               = "nab_mouse"
     COLLECT_WINDOW_MEME     = "collect_window_meme"
     COLLECT_WINDOW_NOTEPAD  = "collect_window_notepad"
-    COLLECT_WINDOW_EXEC     = "collect_window_exec"   # internal, not picked directly
     TRACK_MUD               = "track_mud"
     WATCH_MOUSE             = "watch_mouse"
     FOLLOW_MOUSE            = "follow_mouse"
     SNEAK_ATTACK            = "sneak_attack"
     SLEEP                   = "sleep"
-    PEEK_BACK               = "peek_back"             # internal, triggered by fake-sleep freak-out
+    PEEK_BACK               = "peek_back"
 ```
 
-**PEEK_BACK** is never picked from the weighted list — it is only triggered automatically at the end of a fake-sleep freak-out sequence.
+**PEEK_BACK** is never picked from the weighted list — it is only triggered automatically at the end of a fake-sleep freak-out sequence. `COLLECT_WINDOW_NOTEPAD` and `COLLECT_WINDOW_MEME` share a single `enter`/`tick` in `behaviors/collect_window.py`; the window type is determined inside `enter()` by reading `goose.current_task`. There is no separate `COLLECT_WINDOW_EXEC` task — the full lifecycle including eviction is handled through internal stages in `CollectWindowState`.
 
 ### 12.2 Weighted task list and deck
 
@@ -770,6 +780,141 @@ if honk:
     sound.honk()
 # Then initialize task-specific state...
 ```
+
+### 12.5 Behavior Module System
+
+All behavior logic lives in `pygoose/goose/behaviors/`. Each behavior is a self-contained module — one file per behavior — containing its state dataclass, stage enum, constants, and two functions: `enter(goose)` and `tick(goose)`.
+
+#### 12.5.1 Folder contents
+
+| File | Behavior |
+|------|----------|
+| `behaviors/__init__.py` | Empty package marker |
+| `behaviors/wander.py` | `WanderState`, `enter`, `tick` |
+| `behaviors/track_mud.py` | `TrackMudStage`, `TrackMudState`, `enter`, `tick` |
+| `behaviors/nab_mouse.py` | `NabMouseStage`, `NabMouseState`, cursor-clip constants, `enter`, `tick` |
+| `behaviors/watch_mouse.py` | `WatchSubState`, `WatchMouseState`, `enter`, `tick` |
+| `behaviors/follow_mouse.py` | `FollowMouseStage`, `FollowMouseState`, `enter`, `tick` |
+| `behaviors/sneak_attack.py` | `SneakAttackStage`, `SneakAttackState`, `enter`, `tick` |
+| `behaviors/sleep.py` | `SleepStage`, `SleepState`, `enter`, `tick` |
+| `behaviors/peek_back.py` | `PeekBackStage`, `PeekBackState`, `enter`, `tick` |
+| `behaviors/collect_window.py` | `CollectWindowStage`, `CollectWindowState`, `_set_window_offset_for_direction`, `enter`, `tick` |
+
+`goose.py` imports each module at the top level and re-imports three enums that it needs to reference directly: `SleepStage` (for the sleeping/bubble check in `tick()`), `PeekBackStage` (unused directly but kept for consistency), and `WatchSubState` (for the petting check).
+
+#### 12.5.2 Dispatch tables
+
+Two module-level dicts in `goose.py` replace the old if/elif chains:
+
+```python
+_BEHAVIOR_ENTER: dict[Task, Callable]   # task → enter function
+_BEHAVIOR_TICK:  dict[Task, Callable]   # task → tick function
+```
+
+Both are populated by `_build_dispatch_tables()`, which is called once at module load. `_set_task` calls `_BEHAVIOR_ENTER[task](self)`. `_run_ai` calls `_BEHAVIOR_TICK[self.current_task](self)`. `_choose_next_task` uses `if task not in _BEHAVIOR_TICK: task = Task.WANDER` as its fallback — any task not in the dict is treated as unimplemented.
+
+`COLLECT_WINDOW_NOTEPAD` and `COLLECT_WINDOW_MEME` both map to the same `collect_window.enter` and `collect_window.tick`. Inside `enter()`, the behavior reads `goose.current_task` to decide whether to create a `NotepadWindow` or `MemeWindow` — `_set_task` sets `self.current_task = task` before calling `enter`, so this works without any extra parameter passing.
+
+#### 12.5.3 Single task_state slot
+
+`Goose.__init__` has one slot for all behavior state:
+
+```python
+self.task_state: object = None
+```
+
+`_set_task` sets it to `None` before calling `enter`. Each behavior's `enter` sets it to its own State dataclass instance. Each behavior's `tick` reads it back with a local cast:
+
+```python
+s: WanderState = goose.task_state
+```
+
+No typed per-behavior slots on Goose. No type checking at runtime — each behavior owns its state and no other code reads it.
+
+#### 12.5.4 Circular import pattern
+
+All behavior files need `Goose` for type hints and `SpeedTier`/`Task`/`ScreenDirection` at runtime. But `goose.py` imports all behavior modules at module level, so any module-level import from `goose.py` inside a behavior file causes a circular import (Python starts loading `goose.py`, hits the behavior import, the behavior tries to import back into a partially-initialized module).
+
+The required pattern for every behavior file:
+
+```python
+from __future__ import annotations
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from pygoose.goose.goose import Goose   # type hint only — never executed at runtime
+
+def enter(goose: Goose) -> None:
+    from pygoose.goose.goose import SpeedTier   # deferred — runs after both modules are loaded
+    goose._set_speed(SpeedTier.WALK)
+    goose.task_state = MyState(...)
+
+def tick(goose: Goose) -> None:
+    from pygoose.goose.goose import Task, SpeedTier
+    ...
+```
+
+`TYPE_CHECKING` is `False` at runtime, so the import under it never executes. All runtime imports of `goose.py` symbols are inside function bodies, which run after module initialization is complete.
+
+Do not put any `from pygoose.goose.goose import ...` at module level in a behavior file. It will cause an `ImportError` on startup.
+
+#### 12.5.5 How to add a new behavior
+
+**1. Create `pygoose/goose/behaviors/my_behavior.py`:**
+
+```python
+from __future__ import annotations
+from dataclasses import dataclass
+from enum import Enum
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from pygoose.goose.goose import Goose
+
+from pygoose.engine.vector2 import Vector2
+
+MY_CONSTANT = 42.0
+
+class MyStage(Enum):
+    STAGE_A = "stage_a"
+    STAGE_B = "stage_b"
+
+@dataclass
+class MyState:
+    stage: MyStage = MyStage.STAGE_A
+    start_time: float = 0.0
+
+def enter(goose: Goose) -> None:
+    from pygoose.goose.goose import SpeedTier
+    goose._set_speed(SpeedTier.WALK)
+    goose.task_state = MyState(start_time=goose.time_keeper.time)
+
+def tick(goose: Goose) -> None:
+    from pygoose.goose.goose import Task
+    s: MyState = goose.task_state
+    if s.stage == MyStage.STAGE_A:
+        ...
+        s.stage = MyStage.STAGE_B
+    elif s.stage == MyStage.STAGE_B:
+        goose._set_task(Task.WANDER)
+```
+
+**2. Add to `goose.py`:**
+
+```python
+# At the top, with the other behavior imports:
+import pygoose.goose.behaviors.my_behavior as _b_my_behavior
+
+# In Task enum:
+MY_BEHAVIOR = "my_behavior"
+
+# In TASK_WEIGHTED_LIST (if it should be picked randomly):
+Task.MY_BEHAVIOR,
+
+# In _build_dispatch_tables():
+_BEHAVIOR_ENTER[Task.MY_BEHAVIOR] = _b_my_behavior.enter
+_BEHAVIOR_TICK[Task.MY_BEHAVIOR]  = _b_my_behavior.tick
+```
+
+That's all. The fallback in `_choose_next_task` (`if task not in _BEHAVIOR_TICK`) handles the case where a task is in the weighted list but not yet registered — it silently falls back to wander rather than crashing.
 
 ---
 
