@@ -644,6 +644,10 @@ class Goose:
         # (_pending_drop=True but deadline still 0 means _begin_end_sequence is mid-flight;
         # let it set the deadline before we fire; any later interrupt clears and drops now).
         _KEEP_PROP = {Task.CARRY_PROP, Task.KNIFE_THREAT}
+        if task == Task.KNIFE_THREAT:
+            # Threat mode takes ownership of the knife — cancel any pending drop
+            self._pending_drop = False
+            self._pending_drop_deadline = 0.0
         if task not in _KEEP_PROP and self.carrying_prop is not None:
             if self._pending_drop and self._pending_drop_deadline == 0.0:
                 pass  # _begin_end_sequence will commit the deadline on return

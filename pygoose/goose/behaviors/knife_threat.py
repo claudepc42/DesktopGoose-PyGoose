@@ -17,16 +17,16 @@ STARE_MIN           = 8.0     # seconds before timeout victory
 STARE_MAX           = 20.0
 STARTLE_DIST        = 45.0    # cursor this close → startle exit
 ARRIVE_DIST         = 20.0    # px — close enough to hold position
-JAB_INTERVAL_MIN    = 2.0     # seconds between head jabs
-JAB_INTERVAL_MAX    = 5.0
-JAB_RETRACT_TIME    = 0.10    # seconds neck retracts before jabbing forward
-JAB_EXTEND_TIME     = 0.18    # seconds of full extension (the jab)
+BOB_INTERVAL_MIN    = 0.25    # seconds between head bobs during stare-down
+BOB_INTERVAL_MAX    = 0.7
+BOB_DURATION        = 0.35    # seconds of neck extension per bob
 LUNGE_INTERVAL_MIN  = 5.0     # seconds between faint lunges
 LUNGE_INTERVAL_MAX  = 12.0
 LUNGE_DURATION      = 0.35    # seconds of forward dash
 VICTORY_WALK_DIST   = 180.0   # px away from cursor after timeout
-LAP_RADIUS_MIN      = 140.0
-LAP_RADIUS_MAX      = 240.0
+LAP_RADIUS_MIN      = 70.0
+LAP_RADIUS_MAX      = 120.0
+LAP_BOB_INTERVAL    = 0.5     # seconds between head bobs during victory lap (2/sec)
 LAP_HONK_INTERVAL   = 1.3     # seconds between honks during victory lap
 LAP_TARGET_STEP     = 0.35    # radians per waypoint (~20°)
 LAP_ARRIVE_DIST     = 40.0    # px to consider a lap waypoint reached
@@ -46,9 +46,8 @@ class KnifeThreatState:
     stage: KnifeThreatStage = KnifeThreatStage.APPROACH
     hold_dist: float        = 100.0
     stare_end_time: float   = 0.0
-    next_jab_time: float    = 0.0
-    jab_phase_end: float    = -1.0   # -1=idle, else end of current jab sub-phase
-    jab_jabbing: bool       = False  # False=retracting, True=extending (the jab)
+    next_bob_time: float    = 0.0
+    bob_end_time: float     = -1.0   # -1=idle, else time when current bob ends
     next_lunge_time: float  = 0.0
     lunge_end_time: float   = -1.0
     retreat_target: Vector2 = field(default_factory=Vector2)
@@ -67,8 +66,8 @@ def enter(goose: Goose) -> None:
     goose._set_speed(SpeedTier.WALK)
     goose.task_state = KnifeThreatState(
         hold_dist      = random_range(HOLD_DIST_MIN, HOLD_DIST_MAX),
-        stare_end_time = t + random_range(STARE_MIN, STARE_MAX),
-        next_jab_time  = t + random_range(JAB_INTERVAL_MIN, JAB_INTERVAL_MAX),
+        stare_end_time = -1.0,  # set when STARE_DOWN begins, not during approach
+        next_bob_time  = t + random_range(BOB_INTERVAL_MIN, BOB_INTERVAL_MAX),
         next_lunge_time= t + random_range(LUNGE_INTERVAL_MIN, LUNGE_INTERVAL_MAX),
     )
     goose.override_extend_neck = True
@@ -88,6 +87,7 @@ def tick(goose: Goose) -> None:
         goose.target_pos = cursor + to_goose * s.hold_dist
         if Vector2.distance(goose.position, cursor) <= s.hold_dist + ARRIVE_DIST:
             goose._freeze_position = True
+            s.stare_end_time = goose.time_keeper.time + random_range(STARE_MIN, STARE_MAX)
             s.stage = KnifeThreatStage.STARE_DOWN
 
     # ---- STARE_DOWN -----------------------------------------------------
@@ -101,29 +101,22 @@ def tick(goose: Goose) -> None:
             return
 
         # Timeout → victory
-        if t >= s.stare_end_time:
+        if s.stare_end_time > 0 and t >= s.stare_end_time:
             goose.sound.honk()
             _begin_victory_walk(goose, s, cursor)
             return
 
-        # Head jab: retract then extend
-        if s.jab_phase_end < 0 and t >= s.next_jab_time:
-            # Start retract phase
-            goose.override_extend_neck = False
-            s.jab_jabbing = False
-            s.jab_phase_end = t + JAB_RETRACT_TIME
-        elif s.jab_phase_end > 0 and t >= s.jab_phase_end:
-            if not s.jab_jabbing:
-                # Switch to extend phase (the actual jab)
-                goose.override_extend_neck = True
-                s.jab_jabbing = True
-                s.jab_phase_end = t + JAB_EXTEND_TIME
-            else:
-                # Jab done
-                s.jab_phase_end = -1.0
-                s.next_jab_time = t + random_range(JAB_INTERVAL_MIN, JAB_INTERVAL_MAX)
-        elif s.jab_phase_end < 0:
+        # Head bob (same pattern as wander/watch_mouse)
+        if s.bob_end_time > 0:
             goose.override_extend_neck = True
+            if t >= s.bob_end_time:
+                goose.override_extend_neck = False
+                s.bob_end_time = -1.0
+                s.next_bob_time = t + random_range(BOB_INTERVAL_MIN, BOB_INTERVAL_MAX)
+        elif t >= s.next_bob_time:
+            s.bob_end_time = t + BOB_DURATION
+        else:
+            goose.override_extend_neck = False
 
         # Faint lunge
         if t >= s.next_lunge_time:
@@ -152,8 +145,8 @@ def tick(goose: Goose) -> None:
         if Vector2.distance(goose.position, s.retreat_target) < ARRIVE_DIST:
             goose._freeze_position = True
             s.next_lunge_time = t + random_range(LUNGE_INTERVAL_MIN, LUNGE_INTERVAL_MAX)
-            s.jab_phase_end = -1.0
-            s.next_jab_time = t + random_range(JAB_INTERVAL_MIN, JAB_INTERVAL_MAX)
+            s.bob_end_time = -1.0
+            s.next_bob_time = t + random_range(BOB_INTERVAL_MIN, BOB_INTERVAL_MAX)
             s.stage = KnifeThreatStage.STARE_DOWN
 
     # ---- VICTORY_WALK ---------------------------------------------------
@@ -164,7 +157,17 @@ def tick(goose: Goose) -> None:
 
     # ---- VICTORY_LAP ----------------------------------------------------
     elif s.stage == KnifeThreatStage.VICTORY_LAP:
-        goose.override_extend_neck = True
+        if s.bob_end_time > 0:
+            goose.override_extend_neck = True
+            if t >= s.bob_end_time:
+                goose.override_extend_neck = False
+                s.bob_end_time = -1.0
+                s.next_bob_time = t + LAP_BOB_INTERVAL
+        elif t >= s.next_bob_time:
+            s.bob_end_time = t + BOB_DURATION
+        else:
+            goose.override_extend_neck = False
+
         if t >= s.next_honk_time:
             goose.sound.honk()
             s.next_honk_time = t + LAP_HONK_INTERVAL
@@ -230,6 +233,8 @@ def _begin_victory_lap(goose: Goose, s: KnifeThreatState) -> None:
     )
     s.lap_covered     = 0.0
     s.next_honk_time  = t + LAP_HONK_INTERVAL * 0.5
+    s.bob_end_time    = -1.0
+    s.next_bob_time   = t + LAP_BOB_INTERVAL * 0.5
     # First waypoint
     first_angle = s.lap_angle + LAP_TARGET_STEP * s.lap_direction
     goose.target_pos = _clamp_to_screen(Vector2(
