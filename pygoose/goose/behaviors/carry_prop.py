@@ -15,6 +15,7 @@ from pygoose.goose.props.prop import Prop, PropType, PropState
 HOLD_MIN         = 5.0    # seconds, roughly one wander cycle
 HOLD_MAX         = 11.0   # seconds, roughly one wander cycle
 PLACE_CHANCE     = 0.5    # probability of a gentle place vs. drop at hold end
+THREAT_CHANCE    = 0.40   # probability of entering knife threat when a knife is available
 OFFSCREEN_DIST   = 50.0   # px past screen edge before we spawn the prop
 ARRIVE_DIST      = 10.0   # px close enough to consider a wander target reached
 PICKUP_DIST      = 40.0   # px to stop before the prop (knife ahead of body, not under)
@@ -52,6 +53,7 @@ class CarryPropState:
     pickup_stop_start: float       = 0.0
     pickup_dip_start:  float       = 0.0
     place_dip_start:   float       = 0.0
+    for_threat:        bool        = False  # if True, hand off to KNIFE_THREAT after pickup
 
 
 def enter(goose: Goose) -> None:
@@ -66,12 +68,24 @@ def enter(goose: Goose) -> None:
     goose.task_state = state
     goose._set_speed(SpeedTier.WALK)
 
-    # Pick up an existing placed prop only when at or above the cap (2 while knife is
-    # the only prop type; lower once more props exist).
-    # Count carrying_prop too — if we're in a pending-drop transition, that knife is
-    # about to land on the ground and counts toward the on-screen total.
+    # Count placed and carried knives to inform both threat and cap logic.
     placed = [p for p in goose.props if p.prop_type == prop_type and p.state == PropState.PLACED]
     carrying_same = (goose.carrying_prop is not None and goose.carrying_prop.prop_type == prop_type)
+
+    # Threat mode: if a knife is available and the random check passes, go menacing.
+    if (placed or carrying_same) and _random.random() < THREAT_CHANCE:
+        from pygoose.goose.goose import Task
+        if carrying_same:
+            goose._set_task(Task.KNIFE_THREAT)
+            return
+        # Knife on ground — pick it up first, then hand off to KNIFE_THREAT.
+        state.for_threat = True
+        state.pickup_target = placed[0]
+        state.stage = CarryPropStage.PICKUP_WALK
+        goose.target_pos = _handle_pos(placed[0])
+        return
+
+    # At cap: retrieve an existing knife rather than fetching a new one.
     if len(placed) + (1 if carrying_same else 0) >= 2 and placed:
         p = placed[0]
         state.pickup_target = p
@@ -142,6 +156,10 @@ def tick(goose: Goose) -> None:
             goose.override_extend_neck     = False
             goose._target_sit_lerp         = 0.0
             goose._freeze_position         = False
+            if c.for_threat:
+                from pygoose.goose.goose import Task
+                goose._set_task(Task.KNIFE_THREAT)
+                return
             c.hold_end_time = t + c.hold_duration
             c.stage         = CarryPropStage.WANDERING
             _pick_wander_target(goose)

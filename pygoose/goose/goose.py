@@ -34,6 +34,7 @@ import pygoose.goose.behaviors.sleep         as _b_sleep
 import pygoose.goose.behaviors.peek_back     as _b_peek_back
 import pygoose.goose.behaviors.collect_window as _b_collect
 import pygoose.goose.behaviors.carry_prop    as _b_carry_prop
+import pygoose.goose.behaviors.knife_threat  as _b_knife_threat
 from pygoose.goose.behaviors.sleep    import SleepStage
 from pygoose.goose.behaviors.peek_back import PeekBackStage
 from pygoose.goose.behaviors.watch_mouse import WatchSubState
@@ -76,6 +77,7 @@ class Task(Enum):
     SLEEP                 = "sleep"
     PEEK_BACK             = "peek_back"
     CARRY_PROP            = "carry_prop"
+    KNIFE_THREAT          = "knife_threat"
 
 
 TASK_WEIGHTED_LIST = [
@@ -172,6 +174,7 @@ def _build_dispatch_tables():
     _BEHAVIOR_ENTER[Task.SLEEP]                  = _b_sleep.enter
     _BEHAVIOR_ENTER[Task.PEEK_BACK]              = _b_peek_back.enter
     _BEHAVIOR_ENTER[Task.CARRY_PROP]             = _b_carry_prop.enter
+    _BEHAVIOR_ENTER[Task.KNIFE_THREAT]           = _b_knife_threat.enter
 
     _BEHAVIOR_TICK[Task.WANDER]                 = _b_wander.tick
     _BEHAVIOR_TICK[Task.TRACK_MUD]              = _b_track_mud.tick
@@ -184,6 +187,7 @@ def _build_dispatch_tables():
     _BEHAVIOR_TICK[Task.SLEEP]                  = _b_sleep.tick
     _BEHAVIOR_TICK[Task.PEEK_BACK]              = _b_peek_back.tick
     _BEHAVIOR_TICK[Task.CARRY_PROP]             = _b_carry_prop.tick
+    _BEHAVIOR_TICK[Task.KNIFE_THREAT]           = _b_knife_threat.tick
 
 
 _build_dispatch_tables()
@@ -635,10 +639,12 @@ class Goose:
         self.rig.peek_eye = 0
         self.rig.show_exclamation = False
         self.rig.sleep_phase = 0.0
-        # Drop carried prop on task switch — unless pending-drop is being set up
+        # Drop carried prop on task switch — unless the new task explicitly owns the prop.
+        # CARRY_PROP and KNIFE_THREAT both keep the knife in beak across the transition.
         # (_pending_drop=True but deadline still 0 means _begin_end_sequence is mid-flight;
         # let it set the deadline before we fire; any later interrupt clears and drops now).
-        if task != Task.CARRY_PROP and self.carrying_prop is not None:
+        _KEEP_PROP = {Task.CARRY_PROP, Task.KNIFE_THREAT}
+        if task not in _KEEP_PROP and self.carrying_prop is not None:
             if self._pending_drop and self._pending_drop_deadline == 0.0:
                 pass  # _begin_end_sequence will commit the deadline on return
             else:

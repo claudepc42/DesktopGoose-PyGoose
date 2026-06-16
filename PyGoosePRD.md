@@ -1113,6 +1113,45 @@ Design this as a weight modifier on the drop-destination choice, not a separate 
 3. Walks a full victory lap circle, head bobbing continuously up and down the entire time, honking throughout. Knife remains in beak.
 4. Lap complete → drops knife with no ceremony, mid-stride. Transitions to normal wander.
 
+### 12.6.17 carry_prop.enter() — generalized decision model
+
+When the deck picks `CARRY_PROP`, all decisions are made inside `carry_prop.enter()`. The deck and `_choose_next_task` are untouched. The model has three layers.
+
+**Layer 1 — Assess world state**
+
+Count what is on screen: by prop type, by state (PLACED, FALLING, CARRIED, etc.), and total count vs. the global cap. This snapshot drives everything below.
+
+**Layer 2 — Decide: interact, remove, or fetch**
+
+- Props with available interactions on screen → weighted toward interaction
+- At or above global prop cap → weighted toward removal
+- Nothing on screen → fetch new
+
+These are weights, not hard rules — a nearly-full screen still has a chance to fetch, and a single prop still has a chance to be removed if it has no interesting interactions.
+
+**Layer 3 — Execute**
+
+- **Long-running interaction** (own stages, own state machine) → `_set_task(Task.X)` immediately. `carry_prop` hands off entirely; the new behavior file owns everything from that point.
+- **Short interaction** (nudge, walk past, brief animation) → runs inline inside existing `carry_prop` stages. No new task or behavior file needed.
+- **Fetch new** → pick type from internal weighted list (common / medium / rare tiers). Exit offscreen, re-enter carrying the prop. Uses the existing EXITING → WAITING → ENTERING stage flow.
+- **Remove** → walk to the oldest or most numerous prop of a type, retrieve it (PICKUP_WALK → PICKUP_STOP → PICKUP_DIP), then exit offscreen without re-entering.
+
+**Per-prop interaction registration**
+
+Each prop type declares its supported interactions directly in its `PropDef` entry in `PROP_REGISTRY` — a list of `(weight, Task)` pairs for long-running interactions, plus a `can_remove` flag governing whether removal is a candidate for that type. `carry_prop.enter()` iterates all props currently on screen, builds a weighted pool from their registered interactions, and picks. A prop type with no interactions registered is only ever a candidate for removal or fetch — never for a dedicated behavior.
+
+**File ownership**
+
+- `props/` — what props *are*: data (`prop.py`), rendering (`prop_renderer.py`), physics (`physics.py`)
+- `behaviors/` — what the goose *does*: `carry_prop.py` (decision layer + carry stages) and one file per long-running prop interaction (e.g. `knife_threat.py`)
+
+**What never changes regardless of how many prop types exist**
+
+- Single `CARRY_PROP` entry in `TASK_WEIGHTED_LIST`
+- `_choose_next_task` and the deck untouched
+- All existing `carry_prop` stages (EXITING, WAITING, ENTERING, PICKUP_WALK, PICKUP_STOP, PICKUP_DIP, WANDERING, PAUSING, PLACING) stay as-is
+- New prop-specific behaviors are new files in `behaviors/`, dispatched via the existing `_BEHAVIOR_ENTER` / `_BEHAVIOR_TICK` tables
+
 ---
 
 ## 13. Task: Wander
