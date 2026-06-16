@@ -76,3 +76,17 @@ assets/music_cache.wav
 CLAUDE.md
 optimization.md
 HANDOFF.md
+handoff.md
+temp.md
+memory/
+
+# Stray root-level files (real versions live under pygoose/)
+/engine/
+/goose/
+/paths.py
+/run_dev.py
+
+# Misc local artifacts
+duck-waddling.gif
+gif_frames/
+reference/

@@ -107,21 +107,23 @@ def render_foot_marks(painter: QPainter, foot_marks: list, current_time: float):
 def render_goose(painter: QPainter, rig: Rig, position: Vector2, direction: float,
                  l_foot_pos: Vector2, r_foot_pos: Vector2,
                  config=None):
+    render_goose_body(painter, rig, position, direction, l_foot_pos, r_foot_pos, config)
+    render_goose_head(painter, rig, direction, config)
+
+
+def render_goose_body(painter: QPainter, rig: Rig, position: Vector2, direction: float,
+                      l_foot_pos: Vector2, r_foot_pos: Vector2, config=None):
+    """Shadow, feet, outline, and white fill — everything below the beak layer."""
     fwd = Vector2.get_from_angle_degrees(direction)
-    right = Vector2.get_from_angle_degrees(direction + 90.0)
 
-    body_color = COLOR_WHITE
+    body_color   = COLOR_WHITE
     outline_color = COLOR_LIGHT_GRAY
-    beak_color = COLOR_ORANGE
-
+    beak_color   = COLOR_ORANGE
     if config and config.use_custom_colors:
-        body_color = QColor(config.goose_color_body)
+        body_color    = QColor(config.goose_color_body)
         outline_color = QColor(config.goose_color_underbody)
-        beak_color = QColor(config.goose_color_beak)
+        beak_color    = QColor(config.goose_color_beak)
 
-    # Precompute the shared line endpoints once. The body/neck/head segments are
-    # each drawn twice (outline pass + fill pass); reusing the QPointF objects
-    # halves the QPointF/Vector2 allocations with identical output.
     ub_a = _pt(rig.underbody_center + fwd * 7)
     ub_b = _pt(rig.underbody_center - fwd * 7)
     bd_a = _pt(rig.body_center + fwd * 11)
@@ -130,9 +132,8 @@ def render_goose(painter: QPainter, rig: Rig, position: Vector2, direction: floa
     nh   = _pt(rig.neck_head_point)
     h1   = _pt(rig.head1_end_point)
     h2   = _pt(rig.head2_end_point)
-    beak_tip = _pt(rig.head2_end_point + fwd * 5)
 
-    # 1. Shadow — hatched dark gray ellipse
+    # 1. Shadow
     painter.setPen(_NO_PEN)
     painter.setBrush(_SHADOW_BRUSH)
     painter.drawEllipse(QPointF(position.x, position.y), 20.0, 15.0)
@@ -143,40 +144,46 @@ def render_goose(painter: QPainter, rig: Rig, position: Vector2, direction: floa
     painter.drawEllipse(_pt(l_foot_pos), 4.0, 4.0)
     painter.drawEllipse(_pt(r_foot_pos), 4.0, 4.0)
 
-    # 3. Outline layer (light gray, drawn first so white overwrites)
+    # 3. Outline layer
     _set_pen(painter, outline_color, 15)
     painter.drawLine(ub_a, ub_b)
-
     _set_pen(painter, outline_color, 24)
     painter.drawLine(bd_a, bd_b)
-
     _set_pen(painter, outline_color, 15)
     painter.drawLine(nb, nh)
-
     _set_pen(painter, outline_color, 17)
     painter.drawLine(nh, h1)
-
     _set_pen(painter, outline_color, 12)
     painter.drawLine(h1, h2)
 
     # 4. White fill layer
     _set_pen(painter, body_color, 22)
     painter.drawLine(bd_a, bd_b)
-
     _set_pen(painter, body_color, 13)
     painter.drawLine(nb, nh)
-
     _set_pen(painter, body_color, 15)
     painter.drawLine(nh, h1)
-
     _set_pen(painter, body_color, 10)
     painter.drawLine(h1, h2)
+
+
+def render_goose_head(painter: QPainter, rig: Rig, direction: float, config=None):
+    """Beak, eyes, sleep bubbles, exclamation — drawn on top of props held in beak."""
+    fwd   = Vector2.get_from_angle_degrees(direction)
+    right = Vector2.get_from_angle_degrees(direction + 90.0)
+
+    beak_color = COLOR_ORANGE
+    if config and config.use_custom_colors:
+        beak_color = QColor(config.goose_color_beak)
+
+    h2       = _pt(rig.head2_end_point)
+    beak_tip = _pt(rig.head2_end_point + fwd * 5)
 
     # 5. Beak
     _set_pen(painter, beak_color, 11)
     painter.drawLine(h2, beak_tip)
 
-    # 6. Eyes (hidden while sleeping, one may peek during fake sleep)
+    # 6. Eyes
     b = Vector2(1.3, 0.4)
     left_eye  = rig.neck_head_point + UP * 3 - right * b.x * 3 + fwd * 5
     right_eye = rig.neck_head_point + UP * 3 + right * b.x * 3 + fwd * 5
@@ -186,9 +193,9 @@ def render_goose(painter: QPainter, rig: Rig, position: Vector2, direction: floa
         painter.drawEllipse(_pt(left_eye), 2.0, 2.0)
         painter.drawEllipse(_pt(right_eye), 2.0, 2.0)
     elif rig.peek_eye == 1:
-        painter.drawEllipse(_pt(left_eye), 2.0, 0.8)
+        painter.drawEllipse(_pt(left_eye), 2.0, 1.5)
     elif rig.peek_eye == 2:
-        painter.drawEllipse(_pt(right_eye), 2.0, 0.8)
+        painter.drawEllipse(_pt(right_eye), 2.0, 1.5)
 
     # 7. Sleep bubbles
     if rig.show_sleep_bubbles:

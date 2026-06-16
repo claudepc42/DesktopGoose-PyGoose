@@ -26,6 +26,8 @@ class GooseConfig:
     dev_short_wander: bool = False
     dev_skip_wander: bool = False
     dev_force_fake_sleep: bool = False
+    dev_force_spawn_prop: str = ""  # e.g. "knife" — spawns that prop PLACED at screen center with debug white box
+    dev_hide_goose: bool = False    # suppress goose rendering entirely (physics still ticks); for prop visual design
 
 
 def _warn(msg: str):
@@ -66,6 +68,10 @@ def _save(cfg: GooseConfig, path: str):
         parser["Goose"]["DEV_SkipWander"] = str(cfg.dev_skip_wander)
     if cfg.dev_force_fake_sleep:
         parser["Goose"]["DEV_ForceFakeSleep"] = str(cfg.dev_force_fake_sleep)
+    if cfg.dev_force_spawn_prop:
+        parser["Goose"]["DEV_ForceSpawnProp"] = cfg.dev_force_spawn_prop
+    if cfg.dev_hide_goose:
+        parser["Goose"]["DEV_HideGoose"] = str(cfg.dev_hide_goose)
     with open(path, "w") as f:
         parser.write(f)
 
@@ -105,6 +111,8 @@ def load_config() -> GooseConfig:
             dev_short_wander=g.getboolean("DEV_ShortWander", False),
             dev_skip_wander=g.getboolean("DEV_SkipWander", False),
             dev_force_fake_sleep=g.getboolean("DEV_ForceFakeSleep", False),
+            dev_force_spawn_prop=g.get("DEV_ForceSpawnProp", "").strip(),
+            dev_hide_goose=g.getboolean("DEV_HideGoose", False),
         )
 
     except Exception as e:

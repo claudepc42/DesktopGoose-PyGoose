@@ -48,24 +48,13 @@ pygoose/
 ├── goose/
 │   ├── __init__.py
 │   ├── game.py                    # Main game loop (Init, Update, Render)
-│   ├── goose.py                   # Goose class: physics, dispatch tables, petting/anger checks
+│   ├── goose.py                   # TheGoose: state machine, physics, rendering
 │   ├── renderer.py                # Pure drawing functions (update_rig, render_goose, etc.)
 │   ├── config.py                  # GooseConfig: load/save config.ini
 │   ├── sound.py                   # Sound: honk, chomp, pat, mud squish
 │   ├── overlay.py                 # Transparent always-on-top Qt window
 │   ├── cursor.py                  # Platform cursor clip/release/query helpers
 │   ├── mod_loader.py              # Plugin discovery and loading
-│   ├── behaviors/                 # One file per behavior (see §12.5)
-│   │   ├── __init__.py
-│   │   ├── wander.py
-│   │   ├── track_mud.py
-│   │   ├── nab_mouse.py
-│   │   ├── watch_mouse.py
-│   │   ├── follow_mouse.py
-│   │   ├── sneak_attack.py
-│   │   ├── sleep.py
-│   │   ├── peek_back.py
-│   │   └── collect_window.py
 │   └── windows/
 │       ├── __init__.py
 │       ├── notepad_window.py      # SimpleTextForm equivalent
@@ -704,15 +693,16 @@ class Task(Enum):
     NAB_MOUSE               = "nab_mouse"
     COLLECT_WINDOW_MEME     = "collect_window_meme"
     COLLECT_WINDOW_NOTEPAD  = "collect_window_notepad"
+    COLLECT_WINDOW_EXEC     = "collect_window_exec"   # internal, not picked directly
     TRACK_MUD               = "track_mud"
     WATCH_MOUSE             = "watch_mouse"
     FOLLOW_MOUSE            = "follow_mouse"
     SNEAK_ATTACK            = "sneak_attack"
     SLEEP                   = "sleep"
-    PEEK_BACK               = "peek_back"
+    PEEK_BACK               = "peek_back"             # internal, triggered by fake-sleep freak-out
 ```
 
-**PEEK_BACK** is never picked from the weighted list — it is only triggered automatically at the end of a fake-sleep freak-out sequence. `COLLECT_WINDOW_NOTEPAD` and `COLLECT_WINDOW_MEME` share a single `enter`/`tick` in `behaviors/collect_window.py`; the window type is determined inside `enter()` by reading `goose.current_task`. There is no separate `COLLECT_WINDOW_EXEC` task — the full lifecycle including eviction is handled through internal stages in `CollectWindowState`.
+**PEEK_BACK** is never picked from the weighted list — it is only triggered automatically at the end of a fake-sleep freak-out sequence.
 
 ### 12.2 Weighted task list and deck
 
@@ -781,140 +771,347 @@ if honk:
 # Then initialize task-specific state...
 ```
 
+---
+
 ### 12.5 Behavior Module System
 
-All behavior logic lives in `pygoose/goose/behaviors/`. Each behavior is a self-contained module — one file per behavior — containing its state dataclass, stage enum, constants, and two functions: `enter(goose)` and `tick(goose)`.
+All behavior logic lives in `pygoose/goose/behaviors/`. Each behavior is a self-contained module — one file per behavior — containing its `State` dataclass, optional `Stage` enum, constants, and two functions: `enter(goose)` and `tick(goose)`.
 
-#### 12.5.1 Folder contents
-
-| File | Behavior |
-|------|----------|
-| `behaviors/__init__.py` | Empty package marker |
-| `behaviors/wander.py` | `WanderState`, `enter`, `tick` |
-| `behaviors/track_mud.py` | `TrackMudStage`, `TrackMudState`, `enter`, `tick` |
-| `behaviors/nab_mouse.py` | `NabMouseStage`, `NabMouseState`, cursor-clip constants, `enter`, `tick` |
-| `behaviors/watch_mouse.py` | `WatchSubState`, `WatchMouseState`, `enter`, `tick` |
-| `behaviors/follow_mouse.py` | `FollowMouseStage`, `FollowMouseState`, `enter`, `tick` |
-| `behaviors/sneak_attack.py` | `SneakAttackStage`, `SneakAttackState`, `enter`, `tick` |
-| `behaviors/sleep.py` | `SleepStage`, `SleepState`, `enter`, `tick` |
-| `behaviors/peek_back.py` | `PeekBackStage`, `PeekBackState`, `enter`, `tick` |
-| `behaviors/collect_window.py` | `CollectWindowStage`, `CollectWindowState`, `_set_window_offset_for_direction`, `enter`, `tick` |
-
-`goose.py` imports each module at the top level and re-imports three enums that it needs to reference directly: `SleepStage` (for the sleeping/bubble check in `tick()`), `PeekBackStage` (unused directly but kept for consistency), and `WatchSubState` (for the petting check).
-
-#### 12.5.2 Dispatch tables
-
-Two module-level dicts in `goose.py` replace the old if/elif chains:
+`goose.py` holds two dispatch dicts:
 
 ```python
-_BEHAVIOR_ENTER: dict[Task, Callable]   # task → enter function
-_BEHAVIOR_TICK:  dict[Task, Callable]   # task → tick function
+_BEHAVIOR_ENTER: dict[Task, Callable] = { Task.WANDER: wander.enter, ... }
+_BEHAVIOR_TICK:  dict[Task, Callable] = { Task.WANDER: wander.tick,  ... }
 ```
 
-Both are populated by `_build_dispatch_tables()`, which is called once at module load. `_set_task` calls `_BEHAVIOR_ENTER[task](self)`. `_run_ai` calls `_BEHAVIOR_TICK[self.current_task](self)`. `_choose_next_task` uses `if task not in _BEHAVIOR_TICK: task = Task.WANDER` as its fallback — any task not in the dict is treated as unimplemented.
+`_set_task` calls `_BEHAVIOR_ENTER[task](self)`, and the main `tick()` calls `_BEHAVIOR_TICK[self.current_task](self)` every frame. Per-behavior state is stored in `goose.task_state` (typed `object`), cast inside the behavior file.
 
-`COLLECT_WINDOW_NOTEPAD` and `COLLECT_WINDOW_MEME` both map to the same `collect_window.enter` and `collect_window.tick`. Inside `enter()`, the behavior reads `goose.current_task` to decide whether to create a `NotepadWindow` or `MemeWindow` — `_set_task` sets `self.current_task = task` before calling `enter`, so this works without any extra parameter passing.
-
-#### 12.5.3 Single task_state slot
-
-`Goose.__init__` has one slot for all behavior state:
+**Circular import pattern:** behavior files use `TYPE_CHECKING` guards for type hints and defer all runtime imports from `goose.py` inside function bodies:
 
 ```python
-self.task_state: object = None
-```
-
-`_set_task` sets it to `None` before calling `enter`. Each behavior's `enter` sets it to its own State dataclass instance. Each behavior's `tick` reads it back with a local cast:
-
-```python
-s: WanderState = goose.task_state
-```
-
-No typed per-behavior slots on Goose. No type checking at runtime — each behavior owns its state and no other code reads it.
-
-#### 12.5.4 Circular import pattern
-
-All behavior files need `Goose` for type hints and `SpeedTier`/`Task`/`ScreenDirection` at runtime. But `goose.py` imports all behavior modules at module level, so any module-level import from `goose.py` inside a behavior file causes a circular import (Python starts loading `goose.py`, hits the behavior import, the behavior tries to import back into a partially-initialized module).
-
-The required pattern for every behavior file:
-
-```python
-from __future__ import annotations
-from typing import TYPE_CHECKING
-if TYPE_CHECKING:
-    from pygoose.goose.goose import Goose   # type hint only — never executed at runtime
-
-def enter(goose: Goose) -> None:
-    from pygoose.goose.goose import SpeedTier   # deferred — runs after both modules are loaded
-    goose._set_speed(SpeedTier.WALK)
-    goose.task_state = MyState(...)
-
-def tick(goose: Goose) -> None:
-    from pygoose.goose.goose import Task, SpeedTier
-    ...
-```
-
-`TYPE_CHECKING` is `False` at runtime, so the import under it never executes. All runtime imports of `goose.py` symbols are inside function bodies, which run after module initialization is complete.
-
-Do not put any `from pygoose.goose.goose import ...` at module level in a behavior file. It will cause an `ImportError` on startup.
-
-#### 12.5.5 How to add a new behavior
-
-**1. Create `pygoose/goose/behaviors/my_behavior.py`:**
-
-```python
-from __future__ import annotations
-from dataclasses import dataclass
-from enum import Enum
-from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from pygoose.goose.goose import Goose
 
-from pygoose.engine.vector2 import Vector2
-
-MY_CONSTANT = 42.0
-
-class MyStage(Enum):
-    STAGE_A = "stage_a"
-    STAGE_B = "stage_b"
-
-@dataclass
-class MyState:
-    stage: MyStage = MyStage.STAGE_A
-    start_time: float = 0.0
-
-def enter(goose: Goose) -> None:
-    from pygoose.goose.goose import SpeedTier
-    goose._set_speed(SpeedTier.WALK)
-    goose.task_state = MyState(start_time=goose.time_keeper.time)
-
 def tick(goose: Goose) -> None:
-    from pygoose.goose.goose import Task
-    s: MyState = goose.task_state
-    if s.stage == MyStage.STAGE_A:
-        ...
-        s.stage = MyStage.STAGE_B
-    elif s.stage == MyStage.STAGE_B:
-        goose._set_task(Task.WANDER)
+    from pygoose.goose.goose import SpeedTier, SPEEDS  # deferred runtime import
+    ...
 ```
 
-**2. Add to `goose.py`:**
+#### 12.5.1 Override slot pattern
+
+Behaviors communicate with core systems through designated **override slots** — plain attributes on `Goose` or `Rig` that the behavior writes and core methods read, without branching on behavior identity. This keeps core methods generic and behavior logic contained.
+
+**Rules:**
+- Behaviors write to override slots; core reads them blindly — no `if waddling:` or `if self.current_task == X:` in core methods
+- All override slots are reset to their neutral values in `_set_task` so they never bleed into the next behavior
+- To add a new override slot: add a neutral-default attribute to `Goose.__init__`, reset it in `_set_task`, read it generically in the relevant core method
+
+**Existing override slots:**
+
+| Slot | Lives on | Neutral | Used by | Read by |
+|------|----------|---------|---------|---------|
+| *(none currently assigned)* | | | | |
+
+This table fills in as behaviors adopt the pattern. Add a row here whenever a new slot is introduced.
+
+**Adding a behavior-specific step distance** (example):
 
 ```python
-# At the top, with the other behavior imports:
-import pygoose.goose.behaviors.my_behavior as _b_my_behavior
+# goose.py __init__
+self.step_distance_override: float = 0.0  # 0 = use default
 
-# In Task enum:
-MY_BEHAVIOR = "my_behavior"
+# goose.py _set_task reset block
+self.step_distance_override = 0.0
 
-# In TASK_WEIGHTED_LIST (if it should be picked randomly):
-Task.MY_BEHAVIOR,
+# goose.py _solve_feet (reads blindly — no behavior check)
+threshold = self.step_distance_override or WANT_STEP_AT_DISTANCE
 
-# In _build_dispatch_tables():
-_BEHAVIOR_ENTER[Task.MY_BEHAVIOR] = _b_my_behavior.enter
-_BEHAVIOR_TICK[Task.MY_BEHAVIOR]  = _b_my_behavior.tick
+# wander.py (behavior sets it)
+goose.step_distance_override = 12.0
 ```
 
-That's all. The fallback in `_choose_next_task` (`if task not in _BEHAVIOR_TICK`) handles the case where a task is in the weighted list but not yet registered — it silently falls back to wander rather than crashing.
+**What NOT to do:**
+- Do not modify `_solve_feet` logic for a specific behavior
+- Do not add `if waddling:` / behavior identity checks to any core method
+- Do not add override slots without resetting them in `_set_task`
+
+---
+
+## 12.6 Prop System
+
+Props are physical objects the goose carries in, leaves on the desk, and interacts with. The system is designed around a registry pattern — adding a new prop type means writing a render function and one registry entry, nothing else.
+
+### 12.6.1 World space and Z
+
+PyGoose uses a loose isometric-style 2D view from slightly above:
+- **Screen up = away from viewer** (goose walking toward top is walking into the distance)
+- **Screen down = toward viewer**
+- **Prop Z = height off the desk floor toward the viewer** — a separate axis, not the same as screen-up/away
+
+The shadow resolves the visual ambiguity: `screen_y = ground_y - z * perspective_scale`. Shadow stays pinned at `prop.position` (ground). The gap between shadow and object reads as height.
+
+`perspective_scale` is tuned after rendering is in — start at 1.0.
+
+### 12.6.2 PropState
+
+| State | Description |
+|-------|-------------|
+| `CARRIED` | Attached to beak, position driven by rig each frame |
+| `WORN` | Attached to a rig point (e.g. hat on head), moves with it, click-transparent |
+| `FALLING` | Z decreasing under gravity, shadow pinned at ground |
+| `TIPPING` | Pre-fall wobble for heavy props — spring oscillator rocks prop before committing to FALLING. Gives user anticipation. Only props with `can_tip=True`. |
+| `CLATTERING` | Hit ground, skidding/tumbling with friction before settling |
+| `BOUNCING` | Elastic Z bounce, loses height each hit, eventually settles |
+| `RISING` | Balloon released, Z increasing, drifts off top of screen |
+| `PLACED` | Static at rest on surface |
+| `ACTIVE` | Functional animation running (fan spinning, etc.) |
+| `BROKEN` | Destroyed form, static remains |
+
+### 12.6.3 Prop dataclass (per-instance, mutable)
+
+```python
+@dataclass
+class Prop:
+    prop_type: PropType
+    position: Vector2        # ground position — where shadow sits
+    z: float = 0.0           # height above surface (0 = resting on surface)
+    z_vel: float = 0.0
+    angle: float = 0.0
+    velocity: Vector2 = field(default_factory=Vector2)
+    angular_velocity: float = 0.0
+    state: PropState = PropState.PLACED
+    time_in_state: float = 0.0
+    scale: float = 1.0
+    prop_data: object = None          # type-specific state (fan angle, bounce count, etc.)
+    surface_z: float = 0.0           # Z of the surface this prop rests on:
+                                     #   0.0 = desk floor
+                                     #   WINDOW_Z_HEIGHT = on a goose window
+                                     #   prop_below.surface_z + prop_below.z = stacked on another prop
+                                     # True world height = surface_z + z
+    is_owned: bool = False            # True = goose retrieves if disturbed/dragged; False = litter, click to sweep
+```
+
+### 12.6.4 PropDef dataclass (per-type, static — lives in PROP_REGISTRY)
+
+```python
+@dataclass
+class PropDef:
+    render_fn: Callable
+    render_broken_fn: Callable | None = None
+    break_fn: Callable | None = None          # fn(position, velocity) → list[PropFragment]
+    gravity_scale: float = 1.0               # 1.0=fall, -0.6=balloon rises
+    restitution: float = 0.1
+    friction: float = 0.6
+    mass: float = 1.0                        # affects collision energy transfer — heavier absorbs more
+    can_tip: bool = False                    # whether prop has TIPPING pre-fall state
+    tip_velocity: float = 999.0             # minimum impulse to enter TIPPING
+    fall_velocity: float = 999.0            # minimum impulse to skip TIPPING → straight FALLING
+    can_break: bool = False
+    break_velocity: float = 999.0           # minimum impulse → instant BROKEN
+    bounces_off_edges: bool = False
+    carry_offset_fn: Callable = default_carry_offset
+    idle_animation: bool = False
+    collision_radius: float = 10.0          # radius for prop-to-prop collision detection
+    attachment_point: str | None = None     # rig point name for WORN props (e.g. "HEAD")
+```
+
+`PROP_REGISTRY: dict[PropType, PropDef]` — adding a new prop = write render fn + add one entry.
+
+### 12.6.5 Prop physics (props/physics.py)
+
+Prop physics lives in `pygoose/goose/props/physics.py`. `goose.py` calls `tick_props(props, fragments, goose_state, dt)` once per frame.
+
+**Physics philosophy:** PyGoose is a personality engine, not a physics simulation. Thresholds (`tip_velocity`, `fall_velocity`, `break_velocity`) are design levers tuned by feel. Collision response is a single scalar multiply (velocity × mass ratio). TIPPING uses a spring oscillator for organic feel. This keeps overhead minimal and behavior predictable.
+
+**Collision detection:** radius check between all prop pairs each tick. O(n²) but negligible at max 7 props (15 pairs). Both moving and stationary props checked. Outcome determined by velocity threshold stack.
+
+**Render layering:**
+- Prop at Z=0 (desk) → renders under goose windows
+- Prop at Z = WINDOW_Z_HEIGHT → on window surface, renders over window
+- Prop at Z > WINDOW_Z_HEIGHT → above window surface, renders over window
+- Render order follows `surface_z + z`, not a flat "props always on top" rule
+
+### 12.6.6 Prop ownership
+
+Props are either **goose's property** (`is_owned=True`) or **litter** (`is_owned=False`). Tracked per-instance so ownership can change.
+
+- **Owned:** goose retrieves if knocked over or dragged. High-priority task injection (same pattern as window interactions). Draggable by user — goose chases and retrieves.
+- **Litter:** click to sweep. Goose doesn't care.
+
+Which props are owned vs litter TBD per type. Ownership can change (e.g. balloon weight becomes litter after string is cut).
+
+### 12.6.7 Task selection
+
+`CARRY_PROP` is a single entry in `TASK_WEIGHTED_LIST` like any other task. When the deck picks it, `carry_prop.enter()` makes all further decisions:
+
+- **Props already on screen?** Pick an interaction: play with it, remove it, or break it — weighted by prop type (breakables favor break, ball favors play, old/excess props favor removal).
+- **No props on screen?** Carry a new one in — pick type from an internal weighted list: **common** (knife, fork, spoon), **medium** (balloon, hat), **very rare** (skateboard).
+
+No dynamic injection into the task picker. `_choose_next_task` and the deck are untouched. All decisions live inside `carry_prop.py`. Max 7 props on screen (tunable).
+
+### 12.6.8 Files
+
+| File | Contents |
+|------|----------|
+| `pygoose/goose/props/__init__.py` | Empty package marker |
+| `pygoose/goose/props/prop.py` | `PropType`, `PropState`, `FragmentShape`, `FragmentState`, `Prop`, `PropDef`, `PropFragment`, `PROP_REGISTRY` |
+| `pygoose/goose/props/prop_renderer.py` | `render_prop`, `render_fragment` dispatch + per-type render fns |
+| `pygoose/goose/props/physics.py` | `tick_props(props, fragments, goose_state, dt)` |
+| `pygoose/goose/behaviors/carry_prop.py` | Carry-in, drop, pickup with internal prop type weighted list |
+
+**Modified files:** `goose.py` (props/fragments lists, Task.CARRY_PROP, dispatch, physics tick call), `overlay.py` (render props and fragments)
+
+### 12.6.9 Per-prop implementation process
+
+For each new prop, in this order:
+
+1. **Scaffolding** — add `PropType` enum value, stub entry in `PROP_REGISTRY`, stub render function returning nothing.
+2. **DEV flag** — set `DEV_ForceSpawnProp = <prop_name>` and `DEV_HideGoose = True` in config.ini. This spawns the prop at the debug position with the full debug visualization active.
+3. **Visual iteration** — run the goose and iterate QPainter shapes, colors, line weights until the prop looks right. Do not move on until the visual is locked.
+4. **Derive everything else** — carry offset, collision radius, attachment point, break fragment shapes and colors all come directly from the finalized visual. Do not guess these upfront.
+5. **Implement physics states and behavior** — add states, transitions, and carry_prop behavior logic.
+
+**Why this order:** the visual is what everything else derives from. Designing physics before the visual means reworking all interaction points every time the shape changes.
+
+### 12.6.10 Debug visualization system
+
+Triggered by `DEV_ForceSpawnProp` in config.ini. Also set `DEV_HideGoose = True` and `DEV_ForceTask = wander` when using this mode. Implemented in `prop_renderer.py` `_render_debug_box`.
+
+**Layout:** two white boxes stacked vertically — main box on top, compass below — no separator between them. Default position: left side of screen, with the stack anchored at `(270, screen_h - 728)` so the compass bottom clears the taskbar by ~50px. A **"⇄ flip screen pos"** button inside the top of the main box toggles the entire stack to the right side (`screen_w - 270`) and back, so the user can expose whichever side of the desktop they need. Click detection is handled in `_check_petting` using the stored `_debug_flip_rect`.
+
+In `dirty_rect()`, when `_dev_debug_props` is True the full-screen rect is always returned, bypassing the dirty-rect optimization. This ensures the debug boxes repaint every frame regardless of where the invisible goose wanders.
+
+**Main box (500×340):** up to three prop variants centered vertically, each labeled (v1/v2/v3) with the currently active variant marked by an orange dot. Two reference geese (facing 180° and 45°) in the upper portion for body-size reference. Right side (at `cx+195`, vertically mid-box): a single prop copy showing only its defined attach points as colored dots — hot pink for carry, full green for head, full blue for back. Bottom-left: two shadow previews labeled "prop w/ shadow (carried)" (Z=30, smaller shadow) and "prop w/ shadow (placed)" (Z=0, full-size shadow) to validate the dithered ellipse shadow at different heights — both call `_render_shadow` directly so they always match the live system. Bottom-center: two live oscillating shadow previews sharing the same sine-wave Z (period ~3.5s, range 0→30→0): left prop at 90° (vertical orientation), right prop at 0° (horizontal), both centered under the "live shadow (sine wave)" label at `cx±35`. Both use `_render_shadow` for the shadow and call `_draw_knife_shape` with `painter.rotate(angle)` for the sprite. Bottom-right legend: orange dot "currently shown" (active variant), then three colored dot entries for attach point types.
+
+`_DEBUG_ACTIVE_VARIANT` in `prop_renderer.py` controls which variant is rendered in the compass, shadow previews, and attach point view simultaneously. Change it to "v1", "v2", or "v3" and restart to switch all test views at once.
+
+**Compass box (500×500):** eight reference geese arranged in a circle, each facing outward in their exact compass direction (N/NE/E/SE/S/SW/W/NW). Each goose has the prop placed in carry position using the same rig math that runs in the live behavior — `rig.head2_end_point + fwd * 5` for the beak tip, `direction + 90` for the carry angle, and the same translate offset. This is a free integration test: if the prop looks right on all 8 geese, it will look right at runtime at any angle without per-direction tuning. Without it, a carry position that looks fine facing left may clip the neck facing up-right.
+
+Each compass goose also renders a prop shadow beneath its body shadow, using `_render_shadow` with the same shadow dimensions as the live system. Shadow position formula:
+
+```python
+shadow_x = pos.x + fwd.x * 31.0
+shadow_y = pos.y + fwd.y * 25.0
+```
+
+The facing direction (`fwd`) is used rather than the carry direction, so the shadow always appears directly ahead of the goose — where the beak and knife are. The x/y values differ (31 vs 25) because the body shadow ellipse is wider than it is tall: the same pixel gap looks proportionally larger vertically, so the y offset is dialed down to produce consistent perceived spacing in all 8 views. These values are tuned by eye with E/W as the reference.
+
+**Compass draw order:**
+```
+_render_shadow(prop_shadow)  # prop shadow under everything
+render_goose_body(...)       # goose shadow, feet, outline, white fill
+_render_<prop>_in_beak(...)  # prop sits above body
+render_goose_head(...)       # beak and eyes on top of prop
+```
+
+### 12.6.11 Carry attach point
+
+In `_render_<prop>_in_beak`:
+
+```python
+fwd = Vector2.get_from_angle_degrees(direction)
+beak_tip = rig.head2_end_point + fwd * 5.0   # actual tip — head2_end_point is the beak BASE
+painter.save()
+painter.translate(beak_tip.x, beak_tip.y)
+painter.rotate(direction + 90)   # prop faces goose's right
+painter.translate(N, 0)          # prop's x=0 sits N px ahead of beak tip along carry axis
+painter.scale(1, -1)             # mirror Y so cutting edge faces away from body
+_draw_prop_shape(painter, ...)
+painter.restore()
+```
+
+`N` is the carry offset: the prop's local x=0 (grip junction) is `N` px ahead of the beak tip. The beak grips at local x = `-N`. Increase N to slide further toward the tip; decrease to grip further toward the back. The hot pink dot in the debug main box is drawn at x = `-N` on the horizontally-displayed prop so you can see exactly where the beak makes contact.
+
+### 12.6.12 Render layering for carried props
+
+Props held in the beak must render above the body but below the beak and eyes. `render_goose` in `renderer.py` is split for this purpose:
+
+- `render_goose_body(painter, rig, position, direction, l_foot, r_foot, config)` — shadow, feet, outline layer, white fill layer
+- `render_goose_head(painter, rig, direction, config)` — beak, eyes, sleep bubbles, exclamation mark
+- `render_goose(...)` — wrapper calling both in sequence; existing callers unaffected
+
+The live carry behavior must follow the same order: draw body → draw prop → draw head. Never draw a carried prop after `render_goose` — it will appear on top of the beak and eyes.
+
+### 12.6.13 Adding a new prop — checklist
+
+- [ ] `PropType` enum value added to `prop.py`
+- [ ] Stub render function written and registered in `PROP_REGISTRY`
+- [ ] Prop added to compass box and main debug box variants in `prop_renderer.py`
+- [ ] Visual iterated to final state using debug system
+- [ ] Carry attach offset (`N`) confirmed via hot pink dot in debug box
+- [ ] `_render_<prop>_in_beak` written using `render_goose_body` / `render_goose_head` split
+- [ ] Collision radius derived from finalized visual
+- [ ] Physics states implemented in `props/physics.py`
+- [ ] `carry_prop.enter()` updated to include new prop type in weighted selection
+
+### 12.6.14 Planned: prop-agnostic debug system
+
+The correct mental model: the debug box is a **prop design tool that any prop lives inside**. It is not something the knife owns. The knife was just the first prop to use it and served as the reference implementation to establish the system. Every future prop — fork, spoon, vase, balloon — should slot into the same tool with zero changes to the debug rendering code itself.
+
+The debug box is currently knife-specific: `_draw_knife_shape`, `_render_knife_in_beak`, and `_DEBUG_KNIFE_VARIANTS` are all hardcoded to the knife. This is intentional — the knife was the reference implementation and its visual design is now locked. The refactor is queued but deferred until the second prop is added (see trigger below).
+
+**Once the knife is fully locked**, refactor the debug system so it drives any prop through the registry instead of knife-specific calls:
+
+- `_DEBUG_ACTIVE_PROP: PropType` replaces `_DEBUG_ACTIVE_VARIANT: str`
+- Variant definitions (shape params, labels) move into `PropDef` or a companion `debug_variants` structure on each prop
+- The compass calls `PropDef.carry_render_fn(painter, rig, direction)` instead of `_render_knife_in_beak`
+- The shadow previews and attach point view call `PropDef.render_fn` instead of `_draw_knife_shape`
+- The main box variant rows iterate `PropDef.debug_variants` instead of `_DEBUG_KNIFE_VARIANTS`
+
+End state: changing `_DEBUG_ACTIVE_PROP` to any registered prop type repoints all test views — variants, compass, shadows, attach points — with zero changes to the debug rendering code.
+
+**Trigger:** when adding the second prop. That's the natural moment — two props force the abstraction and provide a concrete second case to design against.
+
+### 12.6.15 carry_prop behavior design
+
+**Carry-in sequence:**
+1. Goose walks off screen like collecting a notepad — no special exit animation.
+2. Knife appears in beak while off-screen (rendered from the moment the goose re-enters the edge), exactly like how the notepad window pre-renders off-screen before drag-in. The goose never "picks it up" on-screen; he already has it.
+3. Goose wanders back onto the desktop carrying the knife.
+
+**Wander-with-knife phase:**
+- Goose wanders normally (same speed, same pauses) with the knife visible in beak the whole time.
+- Hold duration committed upfront on carry-in: random draw, weighted toward shorter end, range roughly 20s–3min.
+- At the end of the hold duration (or on interrupt), goose drops or places the knife.
+
+**Drop types (chosen randomly, except on interrupt):**
+- *Place* — head dips down until beak tip reaches the knife's grab point at ground level; knife transfers cleanly to Z=0. Deliberate and calm.
+- *Drop* — releases from carry height (Z=30); knife falls and bounces per physics. Casual or abrupt.
+- Panic/startle always forces a drop (never a place).
+
+**Pickup animation:**
+When the goose later retrieves a placed or dropped knife, his head dips down until the beak tip reaches the knife's ground-level grab point, then lifts back up with the knife in beak. Dip depth is driven by the knife's actual `position.y` — beak must physically reach it.
+
+**Note/meme surface interaction (planned, Z system not yet implemented):**
+If a note or meme window is on screen, the probability of carrying the knife up to that surface increases. The goose can:
+- Walk up to the note surface (using future z-climbing behavior), carry the knife onto it, and either place it on the edge immediately or drop it there during a later wander.
+- The knife sitting on a note edge is then a candidate for the "nudge off edge" behavior — goose returns, nudges it, knife falls to desktop with a bounce.
+Design this as a weight modifier on the drop-destination choice, not a separate task.
+
+### 12.6.16 Knife threat mode
+
+**Trigger:** Available in the task deck whenever the knife is on-screen in any state (carried or placed). Two entry paths:
+- Goose already carrying knife → transitions directly into threat mode.
+- Knife placed/dropped on screen → goose runs to knife, performs pickup animation, then transitions into threat mode.
+
+**Approach phase:**
+- Goose faces cursor and walks slowly toward it, knife out.
+- Stops at a close-ish distance (~80–120px, tunable).
+
+**Stare-down phase:**
+- Holds position facing cursor.
+- Occasional head jab toward cursor (quick forward-bob of the head, pull back).
+- Occasional faint lunge with a honk — short forward dash toward cursor, then retreats to hold distance.
+- All posturing — no actual cursor interaction.
+
+**Exit A — cursor invades (startle):**
+- If the cursor comes within a very close distance to the goose (as if trying to steal the knife back), goose startles, drops knife immediately (always a drop, never a place), and runs away in a full freak-out.
+
+**Exit B — timeout (goose wins):**
+1. Triumphant honk.
+2. Walks a short distance away.
+3. Walks a full victory lap circle, head bobbing continuously up and down the entire time, honking throughout. Knife remains in beak.
+4. Lap complete → drops knife with no ceremony, mid-stride. Transitions to normal wander.
 
 ---
 
@@ -1888,6 +2085,18 @@ Feature backlog is maintained in `CLAUDE.md` (local only, not in git). Items mov
 ### 35.1 Window cleanup (two-window limit with eviction drag) — **Implemented in 0.33**
 
 The goose keeps up to 2 notepad and 2 meme windows on screen (per type, independent pools). When a 3rd would be added, a random existing window of that type is evicted first — the goose walks to its edge, grabs it, drags it offscreen, and then fetches the new window normally. See §15 for full implementation details.
+
+---
+
+### 35.2 Standalone prop design tool
+
+The debug visualization system built into PyGoose (§12.6.10) will eventually be extracted into its own standalone Python GUI application — a prop design tool that runs independently from PyGoose. The goal is to make adding new props accessible without requiring an AI or deep familiarity with the codebase.
+
+**Motivation:** The current process (edit Python, restart goose, iterate visually) works well but has friction. A dedicated tool could offer: a live canvas where you draw and adjust shapes, sliders for carry offset and collision radius, instant preview of the prop at all 8 compass directions, export of the generated render code and PropDef registry entry directly into PyGoose's prop files.
+
+**When to build:** after several props have been implemented together and the patterns are fully understood. Each new prop implementation adds to the knowledge of what the tool needs to handle. The tool should be built from experience, not speculation.
+
+**What it replaces:** `_render_debug_box`, `_render_compass_box`, and the `DEV_ForceSpawnProp` flow — those become the reference implementation that the standalone tool is modeled on.
 
 ---
 

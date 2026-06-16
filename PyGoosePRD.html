@@ -1,0 +1,1556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PyGoose PRD</title>
+<style>
+:root {
+  --ivory:    #FAF9F5;
+  --paper:    #FFFFFF;
+  --slate:    #141413;
+  --clay:     #D97757;
+  --clay-d:   #B85C3E;
+  --oat:      #E3DACC;
+  --olive:    #788C5D;
+  --rust:     #B04A3F;
+  --g100:     #F0EEE6;
+  --g200:     #E6E3DA;
+  --g300:     #D1CFC5;
+  --g500:     #87867F;
+  --g700:     #3D3D3A;
+  --serif:    ui-serif, Georgia, "Times New Roman", serif;
+  --sans:     system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono:     ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --radius-panel: 12px;
+  --radius-row:   8px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--ivory);
+  color: var(--slate);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.7;
+  display: grid;
+  grid-template-columns: 210px 1fr;
+  min-height: 100vh;
+}
+nav {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  border-right: 1.5px solid var(--g300);
+  background: var(--paper);
+  padding: 24px 0 48px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--g300) transparent;
+}
+.nav-logo {
+  padding: 0 16px 16px;
+  border-bottom: 1.5px solid var(--g300);
+  margin-bottom: 12px;
+}
+.nav-logo .title { font-family: var(--serif); font-size: 14px; font-weight: 700; color: var(--slate); }
+.nav-logo .sub { font-family: var(--mono); font-size: 10px; color: var(--g500); text-transform: uppercase; letter-spacing: .09em; margin-top: 3px; }
+.nav-logo .meta { font-size: 11px; color: var(--g500); margin-top: 5px; }
+.nav-badge {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  padding: 2px 7px;
+  border-radius: 20px;
+  margin-top: 6px;
+  background: rgba(120,140,93,.15);
+  border: 1.5px solid #C8DDB8;
+  color: var(--olive);
+}
+.nav-group-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--g500);
+  padding: 12px 16px 4px;
+}
+nav a {
+  display: block;
+  padding: 4px 0 4px 16px;
+  font-size: 12.5px;
+  color: var(--g700);
+  text-decoration: none;
+  border-left: 2px solid var(--g300);
+  transition: color 100ms, border-color 100ms;
+}
+nav a:hover { color: var(--slate); border-left-color: var(--slate); }
+nav a.active { color: var(--slate); border-left-color: var(--clay); font-weight: 600; }
+nav a.l2 { padding-left: 28px; font-size: 11.5px; color: var(--g500); }
+nav a.l2:hover { color: var(--slate); }
+nav a.l2.active { color: var(--slate); border-left-color: var(--clay); font-weight: 500; }
+
+main {
+  min-width: 0;
+  max-width: 860px;
+  padding: 52px 56px 80px;
+}
+h1 { font-family: var(--serif); font-size: 26px; font-weight: 700; color: var(--slate); letter-spacing: -.01em; margin-bottom: 6px; }
+.doc-subtitle { font-size: 14px; color: var(--g500); margin-bottom: 8px; }
+.doc-meta { font-size: 12px; color: var(--g500); padding: 14px 0 32px; border-bottom: 1.5px solid var(--g300); margin-bottom: 44px; display: flex; gap: 20px; flex-wrap: wrap; }
+.doc-meta span { display: flex; align-items: center; gap: 6px; }
+.status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--olive); display: inline-block; }
+
+section { margin-bottom: 52px; scroll-margin-top: 28px; }
+h2 {
+  font-family: var(--serif); font-size: 18px; font-weight: 700; color: var(--slate);
+  margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1.5px solid var(--g300);
+  display: flex; align-items: baseline; gap: 10px;
+}
+.sec-num { font-family: var(--mono); font-size: 10px; font-weight: 600; color: var(--g500); min-width: 24px; }
+h3 { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--g500); margin: 24px 0 8px; }
+h4 { font-size: 13px; font-weight: 600; color: var(--slate); margin: 14px 0 5px; }
+p { margin-bottom: 12px; color: var(--g700); }
+p strong { color: var(--slate); }
+a { color: var(--clay-d); text-underline-offset: 3px; }
+ul, ol { padding-left: 20px; margin-bottom: 12px; }
+li { margin-bottom: 4px; color: var(--g700); }
+li strong { color: var(--slate); }
+code {
+  font-family: var(--mono); font-size: 12px; background: var(--g100);
+  border: 1.5px solid var(--g300); border-radius: 4px; padding: 1px 5px; color: var(--g700);
+}
+
+.pre-wrap {
+  position: relative;
+  margin: 14px 0;
+}
+pre {
+  background: var(--g100); border: 1.5px solid var(--g300); border-radius: var(--radius-panel);
+  padding: 14px 16px 14px 16px; font-family: var(--mono); font-size: 11.5px; line-height: 1.65;
+  color: var(--g700); overflow-x: auto; scrollbar-width: thin; scrollbar-color: var(--g300) transparent;
+  white-space: pre;
+}
+.pre-label {
+  font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: .09em;
+  color: var(--g500); margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;
+}
+.copy-btn {
+  font-family: var(--sans); font-size: 11px; font-weight: 600; padding: 3px 10px;
+  border-radius: 6px; border: 1.5px solid var(--oat); background: var(--paper); color: var(--g700);
+  cursor: pointer; transition: background 100ms, border-color 100ms, color 100ms;
+}
+.copy-btn:hover { background: var(--oat); border-color: var(--g300); color: var(--slate); }
+.copy-btn.copied { background: #EDF3E8; border-color: #B2CCA0; color: var(--olive); }
+
+.callout {
+  display: flex; gap: 12px; border: 1.5px solid var(--oat); background: rgba(227,218,204,.35);
+  border-radius: var(--radius-panel); padding: 14px 16px; margin: 14px 0; font-size: 13.5px; color: var(--g700);
+}
+.callout .ico { color: var(--clay); font-weight: 700; flex-shrink: 0; }
+.callout strong { color: var(--slate); }
+
+.warning {
+  display: flex; gap: 12px; border: 1.5px solid #F5C6BB; background: rgba(176,74,63,.06);
+  border-radius: var(--radius-panel); padding: 14px 16px; margin: 14px 0; font-size: 13.5px; color: var(--g700);
+}
+.warning .ico { color: var(--rust); font-weight: 700; flex-shrink: 0; }
+.warning strong { color: var(--slate); }
+
+.success-callout {
+  display: flex; gap: 12px; border: 1.5px solid #C8DDB8; background: rgba(120,140,93,.08);
+  border-radius: var(--radius-panel); padding: 14px 16px; margin: 14px 0; font-size: 13.5px; color: var(--g700);
+}
+.success-callout .ico { color: var(--olive); font-weight: 700; flex-shrink: 0; }
+.success-callout strong { color: var(--slate); }
+
+.tldr {
+  border: 1.5px solid var(--g300); border-left: 3px solid var(--clay); border-radius: var(--radius-panel);
+  background: var(--paper); padding: 14px 18px; margin: 14px 0; font-size: 13.5px; color: var(--g700);
+}
+.tldr strong { color: var(--slate); }
+
+table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 13px; }
+thead { background: var(--g100); }
+th { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--g500); padding: 8px 12px; text-align: left; border-bottom: 1.5px solid var(--g300); font-weight: 600; }
+td { padding: 8px 12px; border-bottom: 1px solid var(--g200); color: var(--g700); vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+tbody tr:hover td { background: var(--g100); }
+
+.badge {
+  display: inline-block; font-family: var(--mono); font-size: 9px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .06em; padding: 2px 7px; border-radius: 20px;
+}
+.badge-done    { background: rgba(120,140,93,.15); border: 1.5px solid #C8DDB8; color: var(--olive); }
+.badge-active  { background: rgba(217,119,87,.12); border: 1.5px solid #EFC0AE; color: var(--clay-d); }
+.badge-pending { background: var(--g100); border: 1.5px solid var(--g300); color: var(--g500); }
+.badge-required { background: rgba(176,74,63,.1); border: 1.5px solid #F5C6BB; color: var(--rust); }
+
+.cols-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 14px 0; }
+.card { background: var(--paper); border: 1.5px solid var(--g300); border-radius: var(--radius-panel); padding: 16px 18px; }
+.card-title { font-size: 13px; font-weight: 700; color: var(--slate); margin-bottom: 6px; }
+.card p { font-size: 13px; margin: 0; color: var(--g700); }
+
+.step-list { counter-reset: steps; list-style: none; padding: 0; }
+.step-list li {
+  counter-increment: steps; display: flex; gap: 14px; margin-bottom: 8px;
+  padding: 11px 14px; background: var(--paper); border: 1.5px solid var(--g300);
+  border-radius: var(--radius-row); align-items: flex-start;
+}
+.step-list li::before {
+  content: counter(steps); flex-shrink: 0; width: 20px; height: 20px;
+  background: var(--g100); border: 1.5px solid var(--oat); border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; color: var(--g500); font-family: var(--mono); margin-top: 1px;
+}
+.step-list li p { margin: 0; font-size: 13px; }
+
+details { margin: 12px 0; border: 1.5px solid var(--g300); border-radius: var(--radius-panel); background: var(--paper); }
+summary { padding: 12px 16px; font-size: 13px; font-weight: 600; color: var(--slate); cursor: pointer; display: flex; align-items: center; gap: 8px; list-style: none; user-select: none; }
+summary::before { content: "▶"; font-size: 9px; color: var(--g500); transition: transform 120ms; flex-shrink: 0; }
+details[open] summary::before { transform: rotate(90deg); }
+details > *:not(summary) { padding: 0 16px 16px; }
+
+@media (max-width: 700px) {
+  body { grid-template-columns: 1fr; }
+  nav { display: none; }
+  main { padding: 28px 20px 60px; }
+  .cols-2 { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-logo">
+    <div class="title">PyGoose</div>
+    <div class="sub">Product Requirements</div>
+    <div class="meta">v0.33 · Active Development</div>
+    <div class="nav-badge">Active</div>
+  </div>
+
+  <div class="nav-group-label">Overview</div>
+  <a href="#overview">Project Overview</a>
+  <a href="#platforms">Target Platforms</a>
+  <a href="#tech-stack">Tech Stack</a>
+
+  <div class="nav-group-label">Architecture</div>
+  <a href="#repo-structure">Repository Structure</a>
+  <a href="#engine">Engine Layer</a>
+  <a href="#vector2" class="l2">Vector2</a>
+  <a href="#math-utils" class="l2">SamMath</a>
+  <a href="#easings" class="l2">Easings</a>
+  <a href="#deck" class="l2">Shuffle Deck</a>
+  <a href="#time-keeper" class="l2">Time Keeper</a>
+  <a href="#config">Configuration</a>
+
+  <div class="nav-group-label">Rendering</div>
+  <a href="#overlay">Overlay Window</a>
+  <a href="#rig">Goose Rig</a>
+  <a href="#physics">Physics & Movement</a>
+  <a href="#footmarks">Footmarks</a>
+  <a href="#foot-solver">Foot Solver</a>
+
+  <div class="nav-group-label">Task System</div>
+  <a href="#task-system">Task Overview</a>
+  <a href="#wander">Wander</a>
+  <a href="#nab-mouse">Nab Mouse</a>
+  <a href="#collect-window">Collect Window</a>
+  <a href="#track-mud">Track Mud</a>
+  <a href="#watch-mouse">Watch Mouse</a>
+  <a href="#follow-mouse">Follow Mouse</a>
+  <a href="#sneak-attack">Sneak Attack</a>
+  <a href="#sleep">Sleep</a>
+  <a href="#peek-back">Peek Back</a>
+
+  <div class="nav-group-label">Windows & UI</div>
+  <a href="#notepad">Notepad Window</a>
+  <a href="#meme">Meme Window</a>
+  <a href="#base-window">Base Window</a>
+  <a href="#sound">Sound</a>
+  <a href="#quit">Quit Mechanic</a>
+
+  <div class="nav-group-label">Extension</div>
+  <a href="#modding">Modding API</a>
+  <a href="#dev-flags">Dev Flags</a>
+  <a href="#startup">Startup Sequence</a>
+
+  <div class="nav-group-label">Build & Platform</div>
+  <a href="#platform-notes">Platform Notes</a>
+  <a href="#assets">Asset Requirements</a>
+  <a href="#packaging">Packaging</a>
+  <a href="#checkpoints">Checkpoints</a>
+
+  <div class="nav-group-label">Reference</div>
+  <a href="#deviations">Deviations from Original</a>
+  <a href="#backlog">Backlog</a>
+  <a href="#known-issues">Known Issues</a>
+</nav>
+
+<main>
+  <h1>PyGoose PRD</h1>
+  <p class="doc-subtitle">Product Requirements Document — Desktop Goose: Python Edition</p>
+  <div class="doc-meta">
+    <span><span class="status-dot"></span> Active Development</span>
+    <span>Version 0.33</span>
+    <span>Source: Reverse-engineered from arkangel-dev/desktop-goose-source</span>
+  </div>
+
+  <!-- ── OVERVIEW ── -->
+  <section id="overview">
+    <h2><span class="sec-num">01</span> Project Overview</h2>
+    <p>PyGoose is a cross-platform, open-source reimplementation of samperson's Desktop Goose. It places a procedurally-animated goose on top of all windows on the user's desktop. The goose wanders autonomously, steals the cursor, tracks mud, and drags fake windows onto the screen. It supports user-customizable memes, notepad messages, and a plugin-based modding API.</p>
+    <div class="tldr"><strong>Why rebuild it?</strong> The original is closed-source, Windows-only, and unmaintained. This project recreates full feature parity and adds cross-platform support and a cleaner mod API.</div>
+  </section>
+
+  <!-- ── PLATFORMS ── -->
+  <section id="platforms">
+    <h2><span class="sec-num">02</span> Target Platforms</h2>
+    <table>
+      <thead><tr><th>Platform</th><th>Status</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>Windows 10/11</td><td><span class="badge badge-required">Required</span></td><td>Primary target. Click-through overlay via Qt</td></tr>
+        <tr><td>macOS 12+</td><td><span class="badge badge-required">Required</span></td><td>Requires Accessibility permission prompt on first launch</td></tr>
+        <tr><td>Linux (X11)</td><td><span class="badge badge-required">Required</span></td><td>Wayland unsupported by design; show error if Wayland detected with no XWayland</td></tr>
+      </tbody>
+    </table>
+    <div class="warning"><span class="ico">!</span><span><strong>Linux Wayland:</strong> Display an error dialog on startup if <code>WAYLAND_DISPLAY</code> is set and <code>DISPLAY</code> is not. Do not silently fail.</span></div>
+  </section>
+
+  <!-- ── TECH STACK ── -->
+  <section id="tech-stack">
+    <h2><span class="sec-num">03</span> Technology Stack</h2>
+    <table>
+      <thead><tr><th>Component</th><th>Choice</th><th>Rationale</th></tr></thead>
+      <tbody>
+        <tr><td>Language</td><td><code>Python 3.11+</code></td><td>Cross-platform, readable, easy modding</td></tr>
+        <tr><td>GUI / overlay</td><td><code>PyQt6</code></td><td>Native transparent always-on-top windows, Qt painter for drawing</td></tr>
+        <tr><td>Cursor control</td><td><code>pyautogui</code> + platform ctypes</td><td>Cross-platform cursor position/move</td></tr>
+        <tr><td>Sound</td><td><code>pygame.mixer</code></td><td>Cross-platform MP3/WAV, simple API</td></tr>
+        <tr><td>Config</td><td>INI via <code>configparser</code></td><td>Match original format, user-editable</td></tr>
+        <tr><td>Packaging</td><td><code>PyInstaller</code></td><td>Single-folder distribution per platform</td></tr>
+        <tr><td>Mod API</td><td>Python <code>importlib</code> plugins</td><td>Drop-in <code>.py</code> files, cleaner than DLL injection</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ── REPO STRUCTURE ── -->
+  <section id="repo-structure">
+    <h2><span class="sec-num">04</span> Repository Structure</h2>
+    <div class="pre-wrap">
+      <div class="pre-label"><span>directory layout</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre>pygoose/
+├── main.py                        # Entry point
+├── config.ini                     # User configuration file
+├── goose/
+│   ├── goose.py                   # TheGoose: state machine, physics, rendering
+│   ├── renderer.py                # Pure drawing functions
+│   ├── config.py                  # GooseConfig: load/save config.ini
+│   ├── sound.py                   # Sound: honk, chomp, pat, mud squish
+│   ├── overlay.py                 # Transparent always-on-top Qt window
+│   ├── cursor.py                  # Platform cursor clip/release/query helpers
+│   ├── mod_loader.py              # Plugin discovery and loading
+│   └── windows/
+│       ├── notepad_window.py      # SimpleTextForm equivalent
+│       ├── meme_window.py         # SimpleImageForm equivalent
+│       └── movable_window.py      # Base movable/resizable window
+├── engine/
+│   ├── vector2.py                 # Vector2 math class
+│   ├── math_utils.py              # lerp, clamp, random_range
+│   ├── easings.py                 # All easing functions
+│   ├── deck.py                    # Shuffle-deck random selector
+│   ├── rig.py                     # Rig dataclass: all joint positions + animation state
+│   └── time_keeper.py             # Frame timer, delta time, elapsed time
+├── assets/
+│   ├── fonts/                     # .ttf/.otf handwriting fonts for notepad
+│   ├── sounds/                    # Honk1-4.mp3, BITE.mp3, MudSquish.mp3, Music.mp3, Pat1-3.wav
+│   ├── images/memes/              # User drops meme images/GIFs here
+│   └── text/notepad_messages/     # User drops .txt files here
+└── mods/                          # User mod folders go here</pre>
+    </div>
+  </section>
+
+  <!-- ── ENGINE LAYER ── -->
+  <section id="engine">
+    <h2><span class="sec-num">05</span> Engine Layer</h2>
+    <p>The engine layer contains pure-math utilities with no Qt dependencies. All values must match the original exactly — the physics depends on them.</p>
+
+    <section id="vector2" style="margin-bottom:32px; scroll-margin-top:28px;">
+      <h3>5.1 Vector2</h3>
+      <p>Exact port of the original <code>SamEngine.Vector2</code> struct.</p>
+      <div class="pre-wrap">
+        <div class="pre-label"><span>engine/vector2.py</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+        <pre>class Vector2:
+    x: float
+    y: float
+    zero = Vector2(0.0, 0.0)
+
+    # Operators: +, -, unary -, * (vec*vec), * (vec*float), / (vec/float)
+
+    @staticmethod
+    def get_from_angle_degrees(angle: float) -> Vector2:
+        # angle * 0.0174532924  (deg2rad constant)
+        return Vector2(cos(angle * 0.0174532924), sin(angle * 0.0174532924))
+
+    @staticmethod
+    def distance(a, b) -> float: ...
+
+    @staticmethod
+    def lerp(a, b, p) -> Vector2: ...
+
+    @staticmethod
+    def dot(a, b) -> float: ...
+
+    @staticmethod
+    def normalize(a) -> Vector2:
+        # Guard: if x==0 and y==0, return Vector2.zero
+
+    @staticmethod
+    def magnitude(a) -> float: ...</pre>
+      </div>
+    </section>
+
+    <section id="math-utils" style="margin-bottom:32px; scroll-margin-top:28px;">
+      <h3>5.2 SamMath</h3>
+      <div class="pre-wrap">
+        <div class="pre-label"><span>engine/math_utils.py</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+        <pre>DEG2RAD = 0.0174532924
+RAD2DEG = 57.2957764
+
+def random_range(min: float, max: float) -> float:
+    return min + random.random() * (max - min)
+
+def lerp(a: float, b: float, p: float) -> float:
+    return a * (1.0 - p) + b * p
+
+def clamp(a: float, min_val: float, max_val: float) -> float:
+    return min(max(a, min_val), max_val)</pre>
+      </div>
+      <p>Single shared <code>random.Random()</code> instance throughout the app.</p>
+    </section>
+
+    <section id="easings" style="margin-bottom:32px; scroll-margin-top:28px;">
+      <h3>5.3 Easings</h3>
+      <p>Implement all easing functions exactly as in the original <code>Easings.cs</code>. Only <code>cubic_ease_in_out</code> and <code>exponential_ease_out</code> are used by the goose, but implement the full set for mod authors.</p>
+      <p><strong>Used by goose:</strong> <code>cubic_ease_in_out(p)</code> — foot movement; <code>exponential_ease_out(p)</code> — ESC quit bar.</p>
+      <details>
+        <summary>Full easing list</summary>
+        <p style="margin-top:12px;font-size:13px;">linear, quadratic_ease_in/out/in_out, cubic_ease_in/out/in_out, quartic_ease_in/out/in_out, quintic_ease_in/out/in_out, sine_ease_in/out/in_out, circular_ease_in/out/in_out, exponential_ease_in/out/in_out, elastic_ease_in/out/in_out, back_ease_in/out/in_out, bounce_ease_in/out/in_out</p>
+      </details>
+    </section>
+
+    <section id="deck" style="margin-bottom:32px; scroll-margin-top:28px;">
+      <h3>5.4 Shuffle Deck</h3>
+      <p>Fisher-Yates shuffle-on-exhaust deck. Exact behavior match is required because task weighting depends on it.</p>
+      <div class="pre-wrap">
+        <div class="pre-label"><span>engine/deck.py</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+        <pre>class Deck:
+    def __init__(self, length: int):
+        self.indices = list(range(length))
+        self._i = 0
+        self.reshuffle()
+
+    def reshuffle(self):
+        # Fisher-Yates: for i in range(length): swap indices[i] with indices[randint(0, i)]
+        # NOTE: original uses random_range(0, i) which can return i itself — preserve this
+
+    def next(self) -> int:
+        result = self.indices[self._i]
+        self._i += 1
+        if self._i >= len(self.indices):
+            self.reshuffle()
+            self._i = 0
+        return result</pre>
+      </div>
+    </section>
+
+    <section id="time-keeper" style="margin-bottom:32px; scroll-margin-top:28px;">
+      <h3>5.5 Time Keeper</h3>
+      <div class="pre-wrap">
+        <div class="pre-label"><span>engine/time_keeper.py</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+        <pre>TARGET_FRAMERATE = 120          # Hz
+DELTA_TIME = 1.0 / 120.0       # 0.008333334 seconds — FIXED, not measured
+
+# time: float — seconds since app start, updated once per frame
+# delta_time is ALWAYS 0.008333334 regardless of actual frame timing</pre>
+      </div>
+      <div class="callout"><span class="ico">!</span><span><strong>Fixed delta time:</strong> Delta time is always the constant, not the measured frame time. This matches the original exactly and affects all physics values. <code>TimeKeeper.sleep_remainder()</code> is retained for reference but unused — pacing comes from the QTimer interval.</span></div>
+      <p>The simulation runs at 120 Hz (two fixed steps per 16 ms timer wake) while rendering runs at 60 Hz with dirty-rect partial repaints.</p>
+    </section>
+  </section>
+
+  <!-- ── CONFIG ── -->
+  <section id="config">
+    <h2><span class="sec-num">06</span> Configuration</h2>
+    <div class="pre-wrap">
+      <div class="pre-label"><span>config.ini format</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre>[Goose]
+Version=1
+EnableMods=False
+SilenceSounds=False
+Task_CanAttackMouse=True
+AttackRandomly=False
+UseCustomColors=False
+GooseColorBody=#ffffff
+GooseColorUnderbody=#d3d3d3
+GooseColorBeak=#ffa500
+MinWanderingTimeSeconds=20
+MaxWanderingTimeSeconds=40
+FirstWanderTimeSeconds=20
+NotepadFontSize=25</pre>
+    </div>
+    <p><strong>Version</strong> is a schema integer. If loaded version doesn't match current, delete and regenerate with defaults — show a messagebox warning. If <code>config.ini</code> does not exist, create silently with defaults (no messagebox). If it fails to parse, show messagebox, delete corrupt file, recreate.</p>
+    <div class="pre-wrap">
+      <div class="pre-label"><span>GooseConfig dataclass</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre>@dataclass
+class GooseConfig:
+    version: int = 1
+    enable_mods: bool = False
+    silence_sounds: bool = False
+    task_can_attack_mouse: bool = True
+    attack_randomly: bool = False
+    use_custom_colors: bool = False
+    goose_color_body: str = "#ffffff"
+    goose_color_underbody: str = "#d3d3d3"
+    goose_color_beak: str = "#ffa500"
+    min_wandering_time_seconds: float = 20.0
+    max_wandering_time_seconds: float = 40.0
+    first_wander_time_seconds: float = 20.0
+    notepad_font_size: int = 25</pre>
+    </div>
+  </section>
+
+  <!-- ── OVERLAY ── -->
+  <section id="overlay">
+    <h2><span class="sec-num">07</span> Overlay Window</h2>
+    <p>A single frameless, transparent, always-on-top, click-through window covering the entire primary monitor.</p>
+
+    <h3>Qt window flags (all platforms)</h3>
+    <div class="pre-wrap">
+      <div class="pre-label"><span>overlay.py</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre>flags = (
+    Qt.WindowType.FramelessWindowHint |
+    Qt.WindowType.WindowStaysOnTopHint |
+    Qt.WindowType.Tool |              # hides from taskbar
+    Qt.WindowType.NoDropShadowWindowHint
+)
+setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)</pre>
+    </div>
+
+    <h3>Platform-specific click-through</h3>
+    <div class="cols-2">
+      <div class="card">
+        <div class="card-title">Windows</div>
+        <p>Call <code>SetWindowLong</code> with <code>WS_EX_LAYERED | WS_EX_TRANSPARENT</code> via ctypes after the window is shown. Qt's <code>WA_TransparentForMouseEvents</code> alone is insufficient.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">macOS</div>
+        <p>After <code>show()</code>, call <code>setIgnoresMouseEvents_(True)</code> on each NSWindow via ObjC ctypes. Also call <code>setHidesOnDeactivate_(False)</code> so windows stay visible when another app gains focus.</p>
+      </div>
+    </div>
+    <p><strong>Window sizing:</strong> Cover <code>QScreen.primaryScreen().geometry()</code> exactly — not <code>availableGeometry()</code>. The goose should be able to walk behind the taskbar visually.</p>
+
+    <h3>Render loop (120Hz sim / 60Hz render)</h3>
+    <p>A single <code>QTimer(interval=16)</code> drives the loop. Each wake calls <code>on_tick()</code> twice (two fixed 1/120s physics steps), then schedules a partial dirty-rect repaint.</p>
+    <div class="callout"><span class="ico">i</span><span><strong>Dirty-rect repainting:</strong> <code>Goose.dirty_rect()</code> returns the bounding box of the goose plus any footmarks mid-shrink. The overlay unions current + previous frame rects and calls <code>self.update(region)</code> instead of a full-screen repaint. When the ESC quit bar is visible, its rect is unioned in.</span></div>
+    <div class="callout"><span class="ico">i</span><span><strong>Identical-frame skipping:</strong> <code>Goose.dirty_rect()</code> returns <code>None</code> when nothing affecting drawn pixels has changed. The overlay skips the repaint entirely. During static behaviors (sit, fake-sleep, stand-still), this drops CPU from ~10% to ~2% of one core.</span></div>
+    <div class="success-callout"><span class="ico">✓</span><span><strong>Performance result:</strong> v0.33 reduced idle CPU from ~12.5% to ~0.5%. The lever is update frequency, not region area — Qt re-blits the whole translucent layered window regardless of the invalidated region.</span></div>
+  </section>
+
+  <!-- ── RIG ── -->
+  <section id="rig">
+    <h2><span class="sec-num">08</span> Goose Rendering — The Rig</h2>
+    <p>The goose is <strong>100% procedurally drawn</strong> using lines and ellipses. No sprite images. All shapes use round line caps.</p>
+
+    <h3>Rig dataclass</h3>
+    <div class="pre-wrap">
+      <div class="pre-label"><span>engine/rig.py</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre>@dataclass
+class Rig:
+    # Animation lerp values
+    neck_lerp_percent: float = 0.0       # 0.0=relaxed, 1.0=extended/running
+    sit_lerp_percent: float = 0.0        # 0.0=standing, 1.0=fully crouched
+    neck_tuck_lerp_percent: float = 0.0  # 0.0=normal neck, 1.0=head tucked
+
+    # Pose flags
+    is_sleeping: bool = False
+    show_sleep_bubbles: bool = False
+    peek_eye: int = 0     # 0=no eyes, 1=left only, 2=right only, 3=both
+    show_exclamation: bool = False
+
+    # Sleep bubble animation phase
+    sleep_phase: float = 0.0
+
+    # Joint positions (updated each frame by update_rig)
+    underbody_center: Vector2
+    body_center: Vector2
+    neck_center: Vector2
+    neck_base: Vector2
+    neck_head_point: Vector2
+    head1_end_point: Vector2
+    head2_end_point: Vector2</pre>
+    </div>
+
+    <h3>update_rig — exact math</h3>
+    <div class="pre-wrap">
+      <div class="pre-label"><span>renderer.py — update_rig()</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre>UP = Vector2(0.0, -1.0)
+fwd = Vector2.get_from_angle_degrees(direction)
+s = rig.sit_lerp_percent
+tuck = rig.neck_tuck_lerp_percent
+
+rig.underbody_center = position + UP * lerp(9.0, 1.0, s)
+rig.body_center      = position + UP * lerp(14.0, 4.0, s)
+
+neck_height  = int(lerp(lerp(20.0, 10.0, rig.neck_lerp_percent), 6.0,  tuck))
+neck_forward = int(lerp(lerp(3.0,  16.0, rig.neck_lerp_percent), 2.0,  tuck))
+
+rig.neck_center     = position + UP * (14 + neck_height)
+rig.neck_base       = rig.body_center + fwd * 15.0
+rig.neck_head_point = rig.neck_base + fwd * neck_forward + UP * neck_height
+
+rig.head1_end_point = rig.neck_head_point + fwd * 3.0 - UP * 1.0
+rig.head2_end_point = rig.head1_end_point + fwd * 5.0</pre>
+    </div>
+
+    <h3>render_goose — draw order and sizes</h3>
+    <table>
+      <thead><tr><th>#</th><th>Element</th><th>Color</th><th>Width / Radius</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>Shadow — hatched ellipse under body</td><td><code>QColor(80,80,80,80)</code> Dense4Pattern</td><td>radii (20, 15)</td></tr>
+        <tr><td>2</td><td>Feet — two filled circles</td><td>Orange (beak_color)</td><td>radius 4</td></tr>
+        <tr><td>3</td><td>Outline layer (LightGray, drawn first)</td><td>LightGray</td><td>underbody=15, body=24, neck=15, head1=17, head2=12</td></tr>
+        <tr><td>4</td><td>White fill (overwrites outline)</td><td>White</td><td>body=22, neck=13, head1=15, head2=10</td></tr>
+        <tr><td>5</td><td>Beak</td><td>Orange</td><td>width 11, 5px long</td></tr>
+        <tr><td>6</td><td>Eyes — controlled by <code>peek_eye</code> + <code>is_sleeping</code></td><td>Black</td><td>full=2×2, squint=2×0.8</td></tr>
+        <tr><td>7</td><td>Sleep bubbles — if <code>show_sleep_bubbles</code></td><td>White/blue-tinted</td><td>animated (see below)</td></tr>
+        <tr><td>8</td><td>Exclamation mark — if <code>show_exclamation</code></td><td>Yellow + black outline</td><td>bar 7×10, dot r=3.5</td></tr>
+      </tbody>
+    </table>
+    <p><strong>Custom colors:</strong> When <code>UseCustomColors=True</code>, replace body color with <code>GooseColorBody</code>, outline with <code>GooseColorUnderbody</code>, beak/feet with <code>GooseColorBeak</code>.</p>
+
+    <details>
+      <summary>Sleep bubbles math</summary>
+      <div class="pre-wrap" style="margin-top:12px;">
+        <div class="pre-label"><span>_render_sleep_bubbles</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+        <pre>base = rig.neck_head_point + UP * 10.0
+configs = [
+    {"offset": 0.0, "x_drift":  6.0, "max_r": 3.5},
+    {"offset": 1.0, "x_drift": 11.0, "max_r": 5.0},
+    {"offset": 2.0, "x_drift": 15.0, "max_r": 6.5},
+]
+cycle = 3.0   # seconds per bubble cycle
+rise  = 28.0  # px of upward travel
+
+for cfg in configs:
+    p = ((rig.sleep_phase + cfg["offset"]) % cycle) / cycle   # 0→1
+    alpha = int(clamp(lerp(220, 0, max(0.0, (p - 0.5) * 2.0)), 0, 255))
+    r   = lerp(1.5, cfg["max_r"], p)
+    pos = Vector2(base.x + cfg["x_drift"], base.y - p * rise)</pre>
+      </div>
+    </details>
+
+    <h3>Neck lerp behavior</h3>
+    <div class="pre-wrap">
+      <div class="pre-label"><span>per-frame neck lerp</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre>target_neck = 1.0 if (override_extend_neck or current_speed >= 200.0) else 0.0
+rig.neck_lerp_percent = lerp(rig.neck_lerp_percent, target_neck, 0.075)
+
+rig.sit_lerp_percent       = lerp(rig.sit_lerp_percent,       _target_sit_lerp,  0.06)
+rig.neck_tuck_lerp_percent = lerp(rig.neck_tuck_lerp_percent, _target_neck_tuck, 0.06)</pre>
+    </div>
+    <p><code>override_extend_neck</code> is set <code>True</code> during <code>CollectWindow.DraggingWindowBack</code> and during <code>SNEAK_ATTACK.POUNCING/DRAGGING</code>.</p>
+  </section>
+
+  <!-- ── PHYSICS ── -->
+  <section id="physics">
+    <h2><span class="sec-num">09</span> Physics & Movement</h2>
+
+    <h3>Speed tiers</h3>
+    <table>
+      <thead><tr><th>Tier</th><th>Speed (px/s)</th><th>Accel</th><th>Step time</th></tr></thead>
+      <tbody>
+        <tr><td><code>SNEAK</code></td><td>28.0</td><td>600.0</td><td>0.45s</td></tr>
+        <tr><td><code>WALK</code></td><td>80.0</td><td>1300.0</td><td>0.2s</td></tr>
+        <tr><td><code>RUN</code></td><td>200.0</td><td>1300.0</td><td>0.2s</td></tr>
+        <tr><td><code>CHARGE</code></td><td>400.0</td><td>2300.0</td><td>0.1s</td></tr>
+      </tbody>
+    </table>
+    <p><code>SNEAK</code> is used during fake-sleep peek, sneak attack approach, and sleep circling — careful creeping walk.</p>
+
+    <h3>Physics update (per frame)</h3>
+    <div class="pre-wrap">
+      <div class="pre-label"><span>physics loop — DELTA_TIME = 0.008333334</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre># 1. Compute to_target
+to_target = Vector2.normalize(target_pos - position)
+
+# 2. Run AI (updates target_pos, may set override_extend_neck, _freeze_position)
+run_ai()
+
+# 3. Freak-out override (overrides target_pos/speed if active)
+
+# 4. Turn toward target (lerp angle, 25% per frame)
+current_dir_vec = Vector2.get_from_angle_degrees(direction)
+blended = Vector2.lerp(current_dir_vec, to_target, 0.25)
+direction = degrees(atan2(blended.y, blended.x))
+
+# 5. If _freeze_position: zero velocity, return early
+if _freeze_position:
+    velocity = Vector2.zero; return
+
+# 6. Cap velocity to current_speed
+if Vector2.magnitude(velocity) > current_speed:
+    velocity = Vector2.normalize(velocity) * current_speed
+
+# 7. Accelerate toward target
+velocity += Vector2.normalize(target_pos - position) * current_acceleration * DELTA_TIME
+
+# 8. Integrate position
+position += velocity * DELTA_TIME</pre>
+    </div>
+
+    <h3>Freak-out override</h3>
+    <p>When the goose is caught fake-sleeping, a 4-second freak-out runs as a physics-layer override after the AI dispatcher, taking full control regardless of task.</p>
+    <div class="pre-wrap">
+      <div class="pre-label"><span>freak-out bounce</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre># Two bounce points 400px away, offset ±70px perpendicular:
+away = Vector2.normalize(position - mouse_pos)
+perp = Vector2(-away.y, away.x)
+off_base = position + away * 400.0
+_freak_bounce_a = off_base + perp * 70.0
+_freak_bounce_b = off_base - perp * 70.0
+
+# While active: CHARGE between A and B, honk every 0.3s
+# On expiry: set_task(Task.PEEK_BACK, honk=False)</pre>
+    </div>
+
+    <h3>Petting detection</h3>
+    <div class="pre-wrap">
+      <div class="pre-label"><span>click detection — in tick()</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre>mouse_down = is_left_mouse_down()
+if mouse_down and not last_frame_mouse_button_pressed:
+    cursor_pos = QCursor.pos()
+    goose_head = Vector2(position.x, position.y + 14.0)
+    if distance(goose_head, cursor_pos) < 30.0:
+        if current_task == Task.SLEEP and task_sleep.stage == SleepStage.SLEEPING:
+            sound.honk(); set_task(Task.WANDER)
+        elif current_task == Task.WATCH_MOUSE and sub_state == WatchSubState.SIT:
+            r = random()
+            if r < 0.70:   sound.honk()
+            elif r < 0.90: set_task(Task.WANDER)
+            else:           set_task(Task.NAB_MOUSE)
+        else:
+            set_task(Task.NAB_MOUSE)</pre>
+    </div>
+  </section>
+
+  <!-- ── FOOTMARKS ── -->
+  <section id="footmarks">
+    <h2><span class="sec-num">10</span> Footmarks</h2>
+    <p>A ring buffer of 64 <code>FootMark</code> records. A mark is placed whenever a foot completes a step AND <code>time.time &lt; track_mud_end_time</code>.</p>
+    <div class="pre-wrap">
+      <div class="pre-label"><span>constants & rendering</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre>FOOT_MARK_BUFFER_SIZE = 64
+FOOT_MARK_LIFETIME    = 8.5   # seconds before shrink begins
+FOOT_MARK_SHRINK_TIME = 1.0   # seconds to shrink from radius 3 to 0
+
+for mark in foot_marks:
+    if mark.time == 0.0: continue
+    shrink_start = mark.time + FOOT_MARK_LIFETIME
+    p = clamp((time.time - shrink_start) / FOOT_MARK_SHRINK_TIME, 0.0, 1.0)
+    radius = lerp(3.0, 0.0, p)
+    if radius > 0:
+        painter.drawEllipse(center=mark.position, radius=radius, color=SaddleBrown)</pre>
+    </div>
+  </section>
+
+  <!-- ── FOOT SOLVER ── -->
+  <section id="foot-solver">
+    <h2><span class="sec-num">11</span> Foot Solver</h2>
+    <p>Two-foot IK system that alternates steps. Only one foot moves at a time; when neither is moving, left foot is checked first.</p>
+    <div class="pre-wrap">
+      <div class="pre-label"><span>foot home position</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre>FEET_DISTANCE_APART  = 6.0
+OVERSHOOT_FRACTION   = 0.4
+WANT_STEP_AT_DISTANCE = 5.0
+
+def get_foot_home(right_foot: bool) -> Vector2:
+    s = rig.sit_lerp_percent
+    side = Vector2.get_from_angle_degrees(direction + 90.0) * (1.0 if right_foot else 0.0)
+    perp_dist  = lerp(FEET_DISTANCE_APART, 2.0, s)
+    crawl_drop = lerp(0.0, 8.0, s)
+    return position + side * perp_dist + Vector2(0.0, crawl_drop)</pre>
+    </div>
+    <p>When a foot steps, it overshoots slightly toward <code>get_foot_home() + move_dir * OVERSHOOT_FRACTION * 5.0</code>, animated over <code>step_time</code> using <code>cubic_ease_in_out</code>. On step completion: play pat sound, add footmark if mud active.</p>
+  </section>
+
+  <!-- ── TASK SYSTEM ── -->
+  <section id="task-system">
+    <h2><span class="sec-num">12</span> Task System</h2>
+
+    <h3>Task enum</h3>
+    <table>
+      <thead><tr><th>Task</th><th>Value</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>WANDER</code></td><td>wander</td><td>Default task between behaviors</td></tr>
+        <tr><td><code>NAB_MOUSE</code></td><td>nab_mouse</td><td>Chase and drag cursor</td></tr>
+        <tr><td><code>COLLECT_WINDOW_MEME</code></td><td>collect_window_meme</td><td>Fetch a meme window</td></tr>
+        <tr><td><code>COLLECT_WINDOW_NOTEPAD</code></td><td>collect_window_notepad</td><td>Fetch a notepad window</td></tr>
+        <tr><td><code>COLLECT_WINDOW_EXEC</code></td><td>collect_window_exec</td><td>Internal — not picked directly</td></tr>
+        <tr><td><code>TRACK_MUD</code></td><td>track_mud</td><td>Run offscreen and back leaving mud tracks</td></tr>
+        <tr><td><code>WATCH_MOUSE</code></td><td>watch_mouse</td><td>Sit near cursor and observe it</td></tr>
+        <tr><td><code>FOLLOW_MOUSE</code></td><td>follow_mouse</td><td>Follow cursor at preferred distance</td></tr>
+        <tr><td><code>SNEAK_ATTACK</code></td><td>sneak_attack</td><td>Crawl-sneak pounce on cursor</td></tr>
+        <tr><td><code>SLEEP</code></td><td>sleep</td><td>Walk to corner and sleep (real or fake)</td></tr>
+        <tr><td><code>PEEK_BACK</code></td><td>peek_back</td><td>Internal — auto-triggered after fake-sleep freak-out</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Weighted task deck</h3>
+    <div class="pre-wrap">
+      <div class="pre-label"><span>TASK_WEIGHTED_LIST (16 entries)</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre>TASK_WEIGHTED_LIST = [
+    Task.TRACK_MUD,                 # 2/16
+    Task.TRACK_MUD,
+    Task.COLLECT_WINDOW_MEME,       # 2/16
+    Task.COLLECT_WINDOW_MEME,
+    Task.COLLECT_WINDOW_NOTEPAD,    # 3/16
+    Task.COLLECT_WINDOW_NOTEPAD,
+    Task.COLLECT_WINDOW_NOTEPAD,
+    Task.NAB_MOUSE,                 # 3/16
+    Task.NAB_MOUSE,
+    Task.NAB_MOUSE,
+    Task.WATCH_MOUSE,               # 2/16
+    Task.WATCH_MOUSE,
+    Task.FOLLOW_MOUSE,              # 2/16
+    Task.FOLLOW_MOUSE,
+    Task.SNEAK_ATTACK,              # 1/16
+    Task.SLEEP,                     # 1/16
+]</pre>
+    </div>
+    <div class="callout"><span class="ico">!</span><span><strong>Never modify this list for testing.</strong> Use <code>DEV_ForceTask</code> in config.ini instead.</span></div>
+
+    <h3>Common task reset (_set_task)</h3>
+    <div class="pre-wrap">
+      <div class="pre-label"><span>_set_task(task, honk=True)</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre>override_extend_neck = False
+_target_sit_lerp = 0.0
+_target_neck_tuck = 0.0
+_freeze_position = False
+rig.is_sleeping = False
+rig.show_sleep_bubbles = False
+rig.peek_eye = 0
+rig.show_exclamation = False
+rig.sleep_phase = 0.0
+current_task = task
+if honk: sound.honk()
+# Then initialize task-specific state...</pre>
+    </div>
+  </section>
+
+  <!-- ── WANDER ── -->
+  <section id="wander">
+    <h2><span class="sec-num">13</span> Task: Wander</h2>
+    <div class="pre-wrap">
+      <div class="pre-label"><span>constants</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre>MIN_PAUSE = 1.0       # seconds
+MAX_PAUSE = 2.0
+GOOD_ENOUGH_DIST = 20.0
+
+def get_random_wander_duration() -> float:
+    if DEV_SHORT_WANDER: return 3.0
+    return random_range(config.min_wandering_time_seconds, config.max_wandering_time_seconds)</pre>
+    </div>
+    <p>The goose wanders for a random duration, pausing 1–2 seconds when reaching each sub-target, then picking a new random destination. When duration expires, <code>choose_next_task()</code> is called.</p>
+  </section>
+
+  <!-- ── NAB MOUSE ── -->
+  <section id="nab-mouse">
+    <h2><span class="sec-num">14</span> Task: NabMouse</h2>
+    <p>Three stages: <code>SEEKING_MOUSE</code> → <code>DRAGGING_MOUSE_AWAY</code> → <code>DECELERATING</code></p>
+    <div class="pre-wrap">
+      <div class="pre-label"><span>constants</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre>MOUSE_GRAB_DISTANCE = 15.0    # px, beak tip to cursor
+MOUSE_SUCC_TIME = 0.06        # seconds to transition clamp rect
+MOUSE_DROP_DISTANCE = 30.0    # px, when to release
+GIVE_UP_TIME = 9.0            # seconds before giving up
+STRUGGLE_RANGE = Vector2(3.0, 3.0)</pre>
+    </div>
+    <details>
+      <summary>Full stage logic</summary>
+      <div class="pre-wrap" style="margin-top:12px;">
+        <div class="pre-label"><span>run_nab_mouse()</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+        <pre>if stage == SEEKING_MOUSE:
+    set_speed(CHARGE)
+    target_pos = cursor_pos - (beak_tip - position)
+    if distance(beak_tip, cursor_pos) < MOUSE_GRAB_DISTANCE:
+        # pick drag destination at least 1.2 charge-seconds away
+        drag_to = position
+        while distance(drag_to, position) / 400.0 < 1.2:
+            drag_to = Vector2(random() * screen_w, random() * screen_h)
+        sound.chomp(); stage = DRAGGING_MOUSE_AWAY
+    if t > chase_start_time + GIVE_UP_TIME:
+        stage = DECELERATING
+
+elif stage == DRAGGING_MOUSE_AWAY:
+    if distance(position, target_pos) < MOUSE_DROP_DISTANCE:
+        release_cursor_clip(); stage = DECELERATING
+    else:
+        p = min((t - grabbed_time) / MOUSE_SUCC_TIME, 1.0)
+        clip_vec = Vector2.lerp(original_vector_to_mouse, STRUGGLE_RANGE, p)
+        set_cursor_clip(beak_tip + clip_vec, abs(clip_vec))
+
+elif stage == DECELERATING:
+    velocity -= normalize(velocity) * current_acceleration * 2.0 * DELTA_TIME
+    if magnitude(velocity) < 80.0:
+        release_cursor_clip(); set_task(Task.WANDER)</pre>
+      </div>
+    </details>
+
+    <h3>Platform cursor clip</h3>
+    <table>
+      <thead><tr><th>Platform</th><th>Implementation</th></tr></thead>
+      <tbody>
+        <tr><td>Windows</td><td><code>ctypes.windll.user32.ClipCursor(RECT)</code> / release with <code>ClipCursor(None)</code></td></tr>
+        <tr><td>macOS</td><td>No ClipCursor equivalent — simulate by calling <code>QCursor.setPos()</code> to clip rect center each frame. Requires Accessibility permission; silently does nothing if not granted.</td></tr>
+        <tr><td>Linux</td><td>Use <code>XGrabPointer</code> or same <code>QCursor.setPos()</code> simulation approach.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ── COLLECT WINDOW ── -->
+  <section id="collect-window">
+    <h2><span class="sec-num">15</span> Task: CollectWindow (Meme + Notepad)</h2>
+    <p>Goose fetches a new window from offscreen and drops it on the desktop. Maximum <strong>2 meme windows</strong> and <strong>2 notepad windows</strong> on screen at once (independent pools).</p>
+
+    <h3>Stage flow</h3>
+    <div class="pre-wrap">
+      <div class="pre-label"><span>full stage sequence</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre># If 2 of this type already on screen — eviction path:
+WALKING_TO_EVICT → EVICTING_WINDOW →
+
+# Always:
+WALKING_OFFSCREEN → WAITING_TO_BRING_WINDOW_BACK → DRAGGING_WINDOW_BACK
+
+WAIT_TIME_MIN = 2.0    # seconds waiting offscreen
+WAIT_TIME_MAX = 3.5</pre>
+    </div>
+
+    <h3>Eviction behavior</h3>
+    <p>Goose walks to the grab edge of the evict window (right edge for left-side window, left edge for right-side window), extends neck, attaches it to its beak, and walks toward the nearest screen edge (−80px past left or +80px past right). On disappearing offscreen, window is hidden and deleted.</p>
+    <div class="callout"><span class="ico">i</span><span>Disconnect the evicted window's <code>closing</code> signal before hiding — prevents the anger callback from firing when the goose itself removes it.</span></div>
+
+    <h3>Placement position</h3>
+    <p>First window of its type: wide random spread up to 300px from entry edge, full vertical range. Second window: same base + messy offset (50–130px further, ±150px perpendicular jitter). The goose is not neat.</p>
+
+    <h3>Placed window anger</h3>
+    <p>The most recently placed window is the "anger window." If the user closes it:</p>
+    <ul>
+      <li><strong>Notepad:</strong> goose attacks indefinitely (no timeout)</li>
+      <li><strong>Meme:</strong> goose gets angry only within 3 seconds of placing</li>
+    </ul>
+    <p>Both trigger <code>set_task(Task.NAB_MOUSE)</code>. Closing any non-anger window just removes it from tracking with no reprisal.</p>
+  </section>
+
+  <!-- ── TRACK MUD ── -->
+  <section id="track-mud">
+    <h2><span class="sec-num">16</span> Task: TrackMud</h2>
+    <p>Three stages: <code>DECIDE_TO_RUN</code> → <code>RUNNING_OFFSCREEN</code> → <code>RUNNING_WANDERING</code></p>
+    <div class="pre-wrap">
+      <div class="pre-label"><span>constants</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre>TRACK_MUD_DURATION = 15.0    # seconds of mud tracking
+AMOK_DURATION = 2.0          # seconds of manic running before slowing
+
+# stage flow:
+# DECIDE_TO_RUN: _set_target_offscreen(), set_speed(RUN)
+# RUNNING_OFFSCREEN: when reached target, randomize new target on-screen,
+#                    set track_mud_end_time = t + TRACK_MUD_DURATION, play mud squish
+# RUNNING_WANDERING: wander screen randomly, then set_task(WANDER, honk=False)</pre>
+    </div>
+  </section>
+
+  <!-- ── WATCH MOUSE ── -->
+  <section id="watch-mouse">
+    <h2><span class="sec-num">17</span> Task: WatchMouse</h2>
+    <p>Goose sits near the cursor and observes it. Transitions between sub-states every few seconds.</p>
+    <div class="pre-wrap">
+      <div class="pre-label"><span>constants & sub-states</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre>WATCH_MOUSE_DURATION_MIN = 8.0
+WATCH_MOUSE_DURATION_MAX = 180.0
+BOB_INTERVAL_MIN = 1.2; BOB_INTERVAL_MAX = 3.5; BOB_DURATION = 0.35
+WATCH_HONK_INTERVAL_MIN = 5.0; WATCH_HONK_INTERVAL_MAX = 12.0
+SIT_MIN_DURATION = 15.0    # will not leave SIT before this
+
+class WatchSubState(Enum):
+    STAND_STILL = "stand_still"
+    WALK_SLOW   = "walk_slow"
+    SIT         = "sit"          # crouches, _target_sit_lerp = 1.0</pre>
+    </div>
+    <ul>
+      <li><strong>STAND_STILL:</strong> <code>_freeze_position = True</code>, standing pose</li>
+      <li><strong>WALK_SLOW:</strong> walk toward cursor at WALK speed if dist &gt; 60px, otherwise freeze</li>
+      <li><strong>SIT:</strong> freeze position, <code>_target_sit_lerp = 1.0</code></li>
+    </ul>
+    <p><strong>Head bob:</strong> Every 1.2–3.5s (except SIT), override neck extension for 0.35s. <strong>Rare honk:</strong> Every 5–12s, 30% chance. <strong>Always faces cursor</strong> by setting <code>target_pos = position + normalize(cursor - position) * 50.0</code>.</p>
+    <p><strong>Petting while sitting:</strong> 70% honk, 20% wander, 10% attack mouse.</p>
+  </section>
+
+  <!-- ── FOLLOW MOUSE ── -->
+  <section id="follow-mouse">
+    <h2><span class="sec-num">18</span> Task: FollowMouse</h2>
+    <p>Stages: <code>RUSHING</code> → <code>FOLLOWING</code> ↔ <code>FLEEING</code></p>
+    <div class="pre-wrap">
+      <div class="pre-label"><span>constants</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre>FOLLOW_PREFERRED_DIST_MIN  = 90.0
+FOLLOW_PREFERRED_DIST_MAX  = 160.0
+FOLLOW_FLEE_DIST           = 45.0
+FOLLOW_FLEE_DURATION       = 1.5
+FOLLOW_BOREDOM_MIN         = 15.0; FOLLOW_BOREDOM_MAX = 30.0
+FOLLOW_SNAP_GRAB_CHANCE    = 0.05    # chance to transition to NAB_MOUSE on boredom
+HONK_MARCH_CHANCE          = 0.12   # per check
+HONK_MARCH_CHECK_INTERVAL  = 10.0
+HONK_MARCH_DURATION        = 2.5
+HONK_MARCH_RATE            = 0.38   # seconds between honks during march</pre>
+    </div>
+    <ul>
+      <li><strong>RUSHING:</strong> CHARGE toward preferred distance, then switch to FOLLOWING</li>
+      <li><strong>FOLLOWING:</strong> Maintain preferred distance. Freeze within ±35px deadband. Flee if cursor &lt; 45px. Occasional honk march (rapid honking for 2.5s).</li>
+      <li><strong>FLEEING:</strong> Run 180px away from cursor at RUN speed for 1.5s, return to FOLLOWING</li>
+    </ul>
+    <p><strong>Boredom:</strong> After 15–30s, 5% chance to snap into NAB_MOUSE, otherwise wander.</p>
+  </section>
+
+  <!-- ── SNEAK ATTACK ── -->
+  <section id="sneak-attack">
+    <h2><span class="sec-num">19</span> Task: SneakAttack</h2>
+    <p>Stages: <code>SNEAKING</code> → <code>POUNCING</code> → <code>DRAGGING</code> → <code>DECELERATING</code></p>
+    <div class="pre-wrap">
+      <div class="pre-label"><span>constants</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre>SNEAK_STRIKE_DIST  = 65.0   # px to trigger pounce
+SNEAK_MAX_DURATION = 44.0   # seconds before giving up
+SNEAK_HONK_RATE    = 0.32   # seconds between honks during pounce/drag</pre>
+    </div>
+    <ul>
+      <li><strong>SNEAKING:</strong> SNEAK speed, <code>_target_sit_lerp = 1.0</code>, <code>_target_neck_tuck = 1.0</code>. Creeps toward cursor. On reaching <code>SNEAK_STRIKE_DIST</code>, snap to standing and switch to POUNCING.</li>
+      <li><strong>POUNCING:</strong> CHARGE speed. Chase like NabMouse SEEKING. Honk every 0.32s. Grab on <code>MOUSE_GRAB_DISTANCE</code>.</li>
+      <li><strong>DRAGGING:</strong> Same as NabMouse DRAGGING_MOUSE_AWAY. Continue honking.</li>
+      <li><strong>DECELERATING:</strong> Same as NabMouse DECELERATING.</li>
+    </ul>
+  </section>
+
+  <!-- ── SLEEP ── -->
+  <section id="sleep">
+    <h2><span class="sec-num">20</span> Task: Sleep</h2>
+    <p>Goose walks to a screen corner, circles in a shrinking spiral, settles, and sleeps. 15% chance of fake sleep.</p>
+    <div class="pre-wrap">
+      <div class="pre-label"><span>constants</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre>SLEEP_CIRCLE_RADIUS   = 88.0
+SLEEP_SETTLE_DURATION = 2.2
+SLEEP_MIN_DURATION    = 90.0    # seconds
+SLEEP_MAX_DURATION    = 480.0   # 8 minutes
+SLEEP_CORNER_MARGIN   = 165.0   # px inset from screen edge
+
+# Stages: WALKING_TO_CORNER → CIRCLING → SETTLING → SLEEPING</pre>
+    </div>
+    <p><strong>CIRCLING:</strong> SNEAK speed. Target advances along a shrinking spiral (1.5 revolutions, constant arc speed 40px/s). Transitions to SETTLING at <code>spiral_t >= 0.6</code>.</p>
+    <p><strong>SETTLING:</strong> Over 2.2s, lerp <code>_target_sit_lerp</code> and <code>_target_neck_tuck</code> from 0→1. Then roll 15% for fake sleep.</p>
+
+    <h3>Fake sleep behavior</h3>
+    <ul>
+      <li>No sleep bubbles rendered</li>
+      <li>Every 5–15s: open one random eye for 0.5–2.5s, then close</li>
+      <li>While eye open + cursor within 150px: start spotted sequence
+        <ul>
+          <li>0–0.75s: hold still (one eye open)</li>
+          <li>0.75–1.5s: both eyes open (<code>peek_eye = 3</code>) + show exclamation</li>
+          <li>&gt;1.5s: trigger freak-out (§9 physics override)</li>
+        </ul>
+      </li>
+    </ul>
+
+    <h3>Real sleep behavior</h3>
+    <ul>
+      <li>Sleep bubbles rendered (<code>rig.show_sleep_bubbles = True</code>)</li>
+      <li>Clicking the goose wakes it (honk, transition to WANDER)</li>
+    </ul>
+  </section>
+
+  <!-- ── PEEK BACK ── -->
+  <section id="peek-back">
+    <h2><span class="sec-num">21</span> Task: PeekBack</h2>
+    <p>After a fake-sleep freak-out, the goose returns to the nearest screen edge, peeks back in cautiously, sweeps its gaze, then walks back onto the screen.</p>
+    <div class="pre-wrap">
+      <div class="pre-label"><span>constants</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre>PEEK_INSET = 14.0   # px from screen edge for the peek position
+
+# Stages: peeking_in → looking → walking_in → pausing</pre>
+    </div>
+    <p><strong>Setup:</strong> Find nearest edge. Snap rig immediately to full crawl (<code>sit_lerp = 1.0</code>, <code>neck_tuck = 1.0</code>). Set sweep_deg to random 45–150°.</p>
+    <p><strong>looking stage:</strong> Sweep gaze left/right using a sine wave over 8.8s with smoothstep ease-in/out envelope over first/last 18% of duration, linear exit blend toward <code>enter_pos</code> direction in final 18%.</p>
+    <p><strong>walking_in:</strong> SNEAK speed. Gradually stand up: <code>_target_sit_lerp</code> and <code>_target_neck_tuck</code> lerp from 1→0 proportional to distance remaining.</p>
+    <p><strong>pausing:</strong> Freeze 0.5–1.5s, then WANDER.</p>
+  </section>
+
+  <!-- ── NOTEPAD ── -->
+  <section id="notepad">
+    <h2><span class="sec-num">22</span> Notepad Window</h2>
+    <div class="cols-2">
+      <div class="card">
+        <div class="card-title">Window spec</div>
+        <p>Size: 200×150px<br>Title: <code>Goose "Not-epad"</code><br>Multiline text box fills client area<br>TopMost = True</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Font</div>
+        <p>Custom handwriting font from <code>assets/fonts/</code>. Load via <code>QFontDatabase.addApplicationFont()</code> and use <code>applicationFontFamilies(font_id)</code> for reliable name lookup. Size from <code>config.notepad_font_size</code> (default 25).</p>
+      </div>
+    </div>
+    <h3>Built-in phrases</h3>
+    <div class="pre-wrap">
+      <div class="pre-label"><span>BUILTIN_PHRASES</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre>BUILTIN_PHRASES = [
+    "am goose hjonk",
+    "good work",
+    "nsfdafdsaafsdjl\nasdas       sorry\nhard to type withh feet",
+    "i cause problems on purpose",
+    '"peace was never an option"\n   -the goose (me)',
+    "\n\n  >o) \n    (_>",
+]</pre>
+    </div>
+    <p>Custom <code>.txt</code> files from <code>assets/text/notepad_messages/</code> are merged with built-in phrases into a single module-level <code>Deck</code> that persists across instances.</p>
+  </section>
+
+  <!-- ── MEME ── -->
+  <section id="meme">
+    <h2><span class="sec-num">23</span> Meme Window</h2>
+    <div class="cols-2">
+      <div class="card">
+        <div class="card-title">Window spec</div>
+        <p>Size: 400×400px<br>No title bar text<br>Frameless<br>Image scaled with <code>KeepAspectRatio</code><br>TopMost = True, not resizable</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Assets</div>
+        <p>All files from <code>assets/images/memes/</code>: PNG, JPG, JPEG, GIF, BMP, WEBP. GIFs must animate via <code>QMovie</code>. Module-level <code>Deck</code> persists across instances. If no local images are found, the goose simply skips meme windows — there is no URL fallback.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── BASE WINDOW ── -->
+  <section id="base-window">
+    <h2><span class="sec-num">24</span> Base Movable Window</h2>
+    <p>Both <code>NotepadWindow</code> and <code>MemeWindow</code> inherit from <code>MovableWindow</code>.</p>
+    <div class="pre-wrap">
+      <div class="pre-label"><span>movable_window.py</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre>class MovableWindow(QWidget):
+    closing = pyqtSignal()    # emitted when user closes window
+
+    def move_threadsafe(self, x: int, y: int):
+        QMetaObject.invokeMethod(self, "_do_move", QueuedConnection,
+                                 Q_ARG(int, x), Q_ARG(int, y))
+
+    @pyqtSlot(int, int)
+    def _do_move(self, x, y):
+        self.move(x, y)
+        self.raise_()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if sys.platform == "darwin":
+            from pygoose.goose.overlay import _macos_fix_hides_on_deactivate
+            _macos_fix_hides_on_deactivate()
+
+    def closeEvent(self, event):
+        self.closing.emit()
+        super().closeEvent(event)</pre>
+    </div>
+    <div class="callout"><span class="ico">i</span><span><strong>macOS showEvent:</strong> <code>_macos_fix_hides_on_deactivate()</code> sets <code>setHidesOnDeactivate:False</code> so windows stay visible when another app gains focus. It does NOT set click-through — that would make meme/note windows unclickable.</span></div>
+  </section>
+
+  <!-- ── SOUND ── -->
+  <section id="sound">
+    <h2><span class="sec-num">25</span> Sound</h2>
+    <table>
+      <thead><tr><th>File</th><th>Usage</th><th>Volume</th></tr></thead>
+      <tbody>
+        <tr><td><code>Honk1–4.mp3</code></td><td>Random honk (deck-picked)</td><td>0.8</td></tr>
+        <tr><td><code>BITE.mp3</code></td><td>Cursor grab (chomp)</td><td>0.07</td></tr>
+        <tr><td><code>MudSquish.mp3</code></td><td>Mud task start</td><td>—</td></tr>
+        <tr><td><code>Pat1–3.wav</code></td><td>Footstep sound on step completion</td><td>—</td></tr>
+        <tr><td><code>Music.mp3</code></td><td>Optional background loop</td><td>50%</td></tr>
+      </tbody>
+    </table>
+    <p><strong>Silence mode:</strong> If <code>config.silence_sounds = True</code>, all Sound methods are no-ops.</p>
+    <p><strong>Music PCM cache:</strong> Looping <code>Music.mp3</code> costs ~2% CPU. On first run, Sound decodes the MP3 in the background (<code>QAudioDecoder</code> → Int16 PCM) and writes <code>assets/music_cache.wav</code> via atomic temp-file rename. Subsequent sessions use the WAV (~0.5% CPU). Cache failure silently falls back to MP3.</p>
+    <div class="callout"><span class="ico">!</span><span>App must not crash if sound files are missing — log a warning and continue.</span></div>
+  </section>
+
+  <!-- ── QUIT ── -->
+  <section id="quit">
+    <h2><span class="sec-num">26</span> Quit Mechanic</h2>
+    <p>Hold ESC for ~5 seconds to quit. Progress bar slides in from top of screen.</p>
+    <div class="pre-wrap">
+      <div class="pre-label"><span>constants</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre>QUIT_ALPHA_INCREMENT = 0.00216666679  # per frame while ESC held
+QUIT_ALPHA_DECREMENT = 0.0166666675   # per frame while ESC released
+QUIT_THRESHOLD       = 0.99
+QUIT_SHOW_THRESHOLD  = 0.2</pre>
+    </div>
+    <p>When <code>quit_alpha &gt; QUIT_SHOW_THRESHOLD</code>: slide in a bar with LightBlue background, LightPink fill progress, dark text reading <em>"Continue holding ESC to evict goose"</em>. When <code>quit_alpha &gt;= 0.99</code>: <code>QApplication.quit()</code>.</p>
+  </section>
+
+  <!-- ── MODDING ── -->
+  <section id="modding">
+    <h2><span class="sec-num">27</span> Modding API</h2>
+    <p>Mods load only when <code>config.enable_mods = True</code>. Loaded alphabetically. Bad mods log an error and are skipped — never crash the app.</p>
+    <div class="pre-wrap">
+      <div class="pre-label"><span>mod structure</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre>mods/
+└── MyModName/
+    ├── mod.py          # Required. Must contain a class named Mod.
+    └── assets/         # Optional.
+
+class Mod:
+    def __init__(self, api: GooseAPI): ...
+    def on_load(self): ...
+    def on_tick(self): ...
+    def on_render(self, painter: QPainter): ...
+    def on_task_changed(self, task: Task): ...
+    def on_unload(self): ...</pre>
+    </div>
+    <details>
+      <summary>GooseAPI surface</summary>
+      <div class="pre-wrap" style="margin-top:12px;">
+        <div class="pre-label"><span>GooseAPI</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+        <pre>class GooseAPI:
+    @property
+    def position(self) -> Vector2: ...
+    @property
+    def velocity(self) -> Vector2: ...
+    @property
+    def direction(self) -> float: ...
+    @property
+    def current_task(self) -> Task: ...
+    @property
+    def screen_size(self) -> tuple[int, int]: ...
+    @property
+    def rig(self) -> Rig: ...
+
+    def set_task(self, task: Task): ...
+    def play_sound(self, path: str): ...
+    def show_image_window(self, image_path: str): ...
+    def show_text_window(self, text: str): ...
+    def add_foot_mark(self, position: Vector2): ...
+    def draw_circle(self, painter, center: Vector2, radius: int, color: str): ...
+    def draw_line(self, painter, start: Vector2, end: Vector2, width: int, color: str): ...</pre>
+      </div>
+    </details>
+  </section>
+
+  <!-- ── DEV FLAGS ── -->
+  <section id="dev-flags">
+    <h2><span class="sec-num">28</span> Developer Flags</h2>
+    <p>Set in <code>config.ini</code> — use these instead of touching code when testing.</p>
+    <div class="pre-wrap">
+      <div class="pre-label"><span>config.ini dev flags</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre>DEV_ForceTask = collect_window_notepad  ; force a specific task every time (blank to disable)
+DEV_ShortWander = True                  ; wander lasts only 3 seconds
+DEV_ForceFakeSleep = True               ; always fake sleep instead of 15% chance</pre>
+    </div>
+    <table>
+      <thead><tr><th>Flag</th><th>Checked in</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>DEV_ForceTask</code></td><td><code>_choose_next_task()</code></td><td>Bypasses the deck. Also forces SLEEP to use top-left corner.</td></tr>
+        <tr><td><code>DEV_ShortWander</code></td><td><code>_get_random_wander_duration()</code></td><td>Returns 3.0 instead of config range.</td></tr>
+        <tr><td><code>DEV_ForceFakeSleep</code></td><td>SETTLING→SLEEPING transition</td><td>100% fake sleep.</td></tr>
+      </tbody>
+    </table>
+    <div class="warning"><span class="ico">!</span><span><strong>Never modify <code>TASK_WEIGHTED_LIST</code> in code for testing.</strong> Use <code>DEV_ForceTask</code> in config.ini. Clear all three before pushing a stable version tag.</span></div>
+  </section>
+
+  <!-- ── STARTUP ── -->
+  <section id="startup">
+    <h2><span class="sec-num">29</span> Startup Sequence</h2>
+    <ol class="step-list">
+      <li><p>Create <code>QApplication</code></p></li>
+      <li><p>Detect platform; if Wayland and no XWayland: show error dialog and exit</p></li>
+      <li><p>Load <code>config.ini</code> (create silently with defaults if missing)</p></li>
+      <li><p>Create overlay window (transparent, always-on-top, click-through)</p></li>
+      <li><p>Size overlay to primary monitor via <code>QScreen.primaryScreen().geometry()</code></p></li>
+      <li><p>Apply platform-specific click-through (Windows: <code>SetWindowLong</code>; macOS: ObjC ctypes)</p></li>
+      <li><p>Init sound system (unless <code>SilenceSounds=True</code>)</p></li>
+      <li><p>Init goose: position <code>(-20, 120)</code>, target <code>(100, 150)</code>, task WANDER (honk=False)</p></li>
+      <li><p>If <code>EnableMods=True</code>: discover and load mods</p></li>
+      <li><p>Start game loop timer; <code>QApplication.exec()</code></p></li>
+    </ol>
+  </section>
+
+  <!-- ── PLATFORM NOTES ── -->
+  <section id="platform-notes">
+    <h2><span class="sec-num">30</span> Platform Notes</h2>
+    <table>
+      <thead><tr><th>Feature</th><th>Windows</th><th>macOS</th><th>Linux</th></tr></thead>
+      <tbody>
+        <tr><td>Click-through</td><td><code>SetWindowLong</code> WS_EX_TRANSPARENT via ctypes</td><td>ObjC ctypes <code>setIgnoresMouseEvents:True</code></td><td><code>WA_TransparentForMouseEvents</code> sufficient</td></tr>
+        <tr><td>Window stays visible when unfocused</td><td>Not needed</td><td>ObjC ctypes <code>setHidesOnDeactivate:False</code> on all windows</td><td>Not needed</td></tr>
+        <tr><td>Cursor clip</td><td><code>ClipCursor(RECT)</code> via ctypes</td><td>Simulate: <code>QCursor.setPos()</code> each frame to clip center</td><td><code>XGrabPointer</code> or same simulation</td></tr>
+        <tr><td>Accessibility</td><td>Not needed</td><td>Required for cursor move. Check <code>AXIsProcessTrusted()</code>, prompt on startup.</td><td>Not needed</td></tr>
+        <tr><td>Wayland check</td><td>N/A</td><td>N/A</td><td>If <code>WAYLAND_DISPLAY</code> set and no <code>DISPLAY</code>: error dialog + exit</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ── ASSETS ── -->
+  <section id="assets">
+    <h2><span class="sec-num">31</span> Asset Requirements</h2>
+    <table>
+      <thead><tr><th>File</th><th>Description</th><th>Required</th></tr></thead>
+      <tbody>
+        <tr><td><code>Honk1–4.mp3</code></td><td>Goose honk sounds (4 variants)</td><td><span class="badge badge-required">Required</span></td></tr>
+        <tr><td><code>BITE.mp3</code></td><td>Cursor grab sound (very quiet, 0.07 volume)</td><td><span class="badge badge-required">Required</span></td></tr>
+        <tr><td><code>MudSquish.mp3</code></td><td>Mud squish on TrackMud start</td><td><span class="badge badge-required">Required</span></td></tr>
+        <tr><td><code>Pat1–3.wav</code></td><td>Footstep pat sounds</td><td><span class="badge badge-required">Required</span></td></tr>
+        <tr><td><code>Music.mp3</code></td><td>Optional background music loop at 50% volume</td><td><span class="badge badge-pending">Optional</span></td></tr>
+        <tr><td><code>assets/fonts/</code></td><td>Custom handwriting font (.ttf/.otf) for notepad</td><td><span class="badge badge-pending">Optional</span></td></tr>
+        <tr><td><code>assets/images/memes/</code></td><td>User meme images — PNG, JPG, GIF, BMP, WEBP</td><td><span class="badge badge-pending">Optional</span></td></tr>
+        <tr><td><code>assets/text/notepad_messages/</code></td><td>User .txt notepad messages</td><td><span class="badge badge-pending">Optional</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ── PACKAGING ── -->
+  <section id="packaging">
+    <h2><span class="sec-num">32</span> Packaging</h2>
+    <div class="cols-2">
+      <div class="card">
+        <div class="card-title">Windows &amp; Linux — onedir</div>
+        <p>Folder containing exe + DLLs + Qt plugins + assets. Instant startup. User shares the folder.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">macOS — onefile</div>
+        <p>Single <code>PyGoose</code> binary. Avoids Gatekeeper approving every DLL individually. Trade-off: ~2–3s extraction on first cold-boot launch.</p>
+      </div>
+    </div>
+
+    <h3>Path resolution</h3>
+    <div class="pre-wrap">
+      <div class="pre-label"><span>pygoose/paths.py</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre>def resource_path(*parts) -> str:
+    """Bundled read-only assets: sounds, fonts."""
+    base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, *parts)
+
+def user_data_path(*parts) -> str:
+    """User-editable content: config.ini, memes, notepad messages."""
+    if getattr(sys, 'frozen', False):
+        base = os.path.dirname(sys.executable)
+    else:
+        base = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base, *parts)</pre>
+    </div>
+
+    <h3>spec file key entries</h3>
+    <div class="pre-wrap">
+      <div class="pre-label"><span>PyGoose.spec (sketch)</span><button class="copy-btn" onclick="copyCode(this)">Copy</button></div>
+      <pre>a = Analysis(
+    ['main.py'],
+    datas=[
+        ('assets/sounds', 'assets/sounds'),
+        ('assets/fonts',  'assets/fonts'),
+        # memes and notepad_messages are user-side — do NOT bundle them
+    ],
+    hiddenimports=['pygame', 'PyQt6.sip'],
+)
+# is_mac = sys.platform == 'darwin'
+# EXE: onefile if is_mac, else onedir</pre>
+    </div>
+
+    <h3>Known gotchas</h3>
+    <table>
+      <thead><tr><th>Issue</th><th>Cause</th><th>Fix</th></tr></thead>
+      <tbody>
+        <tr><td>Blank screen</td><td>Qt platform plugin missing</td><td>Ensure <code>platforms/</code> folder in bundle; <code>--collect-all PyQt6</code></td></tr>
+        <tr><td>No sound</td><td>pygame SDL DLLs missing</td><td><code>--collect-all pygame</code></td></tr>
+        <tr><td>Assets not found</td><td>Bare relative paths</td><td>Use <code>resource_path()</code> everywhere</td></tr>
+        <tr><td>Config resets every run</td><td><code>config.ini</code> inside bundle (read-only)</td><td>Use <code>user_data_path()</code></td></tr>
+        <tr><td>Slow startup</td><td>onefile extraction</td><td>Switch to onedir (non-macOS only)</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ── CHECKPOINTS ── -->
+  <section id="checkpoints">
+    <h2><span class="sec-num">33</span> Implementation Checkpoints</h2>
+    <table>
+      <thead><tr><th>#</th><th>Checkpoint</th><th>Deliverable</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>Engine layer</td><td>vector2, math_utils, easings, deck, rig, time_keeper — with unit tests</td><td><span class="badge badge-done">Done</span></td></tr>
+        <tr><td>2</td><td>Transparent overlay</td><td>Window covers screen, transparent, click-through on all 3 platforms</td><td><span class="badge badge-done">Done</span></td></tr>
+        <tr><td>3</td><td>Goose rig + renderer</td><td>Goose drawn correctly at fixed position. All body parts correct. Crawl/sit pose works.</td><td><span class="badge badge-done">Done</span></td></tr>
+        <tr><td>4</td><td>Physics + wander</td><td>Goose walks around screen. Feet animate. Neck extends at run speed.</td><td><span class="badge badge-done">Done</span></td></tr>
+        <tr><td>5</td><td>Footmarks</td><td>TrackMud works. Brown dots appear and fade.</td><td><span class="badge badge-done">Done</span></td></tr>
+        <tr><td>6</td><td>NabMouse</td><td>Cursor grabbed and dragged. All 3 platforms.</td><td><span class="badge badge-done">Done</span></td></tr>
+        <tr><td>7</td><td>Notepad window</td><td>Window spawns with custom font. Goose drags it. Early close triggers NabMouse.</td><td><span class="badge badge-done">Done</span></td></tr>
+        <tr><td>8</td><td>Meme window</td><td>Image/GIF window spawns. GIF animates.</td><td><span class="badge badge-done">Done</span></td></tr>
+        <tr><td>9</td><td>WatchMouse</td><td>Goose sits near cursor, bobs, honks. Petting while sitting has 3 outcomes.</td><td><span class="badge badge-done">Done</span></td></tr>
+        <tr><td>10</td><td>FollowMouse</td><td>Follows at preferred distance. Flees if too close. Honk marches.</td><td><span class="badge badge-done">Done</span></td></tr>
+        <tr><td>11</td><td>SneakAttack</td><td>Creeps in crawl pose, pounces, grabs.</td><td><span class="badge badge-done">Done</span></td></tr>
+        <tr><td>12</td><td>Sleep</td><td>Circles to corner, settles, sleeps. Fake sleep with eye peeking and freak-out.</td><td><span class="badge badge-done">Done</span></td></tr>
+        <tr><td>13</td><td>PeekBack</td><td>Post-freak-out peek sequence with sweep and walk-in.</td><td><span class="badge badge-done">Done</span></td></tr>
+        <tr><td>14</td><td>Sound</td><td>All sounds play. Silence mode works.</td><td><span class="badge badge-done">Done</span></td></tr>
+        <tr><td>15</td><td>Config</td><td>config.ini loads/saves. Custom colors work.</td><td><span class="badge badge-done">Done</span></td></tr>
+        <tr><td>16</td><td>Quit mechanic</td><td>ESC hold progress bar. Correct timing.</td><td><span class="badge badge-done">Done</span></td></tr>
+        <tr><td>17</td><td>Mod API</td><td>Loader discovers mods. Example mod runs. Bad mods don't crash app.</td><td><span class="badge badge-pending">Pending</span></td></tr>
+        <tr><td>18</td><td>Packaging</td><td>PyInstaller builds working distributions for Windows, macOS, Linux.</td><td><span class="badge badge-done">Done</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ── DEVIATIONS ── -->
+  <section id="deviations">
+    <h2><span class="sec-num">34</span> Deviations from Original</h2>
+    <table>
+      <thead><tr><th>Feature</th><th>Original</th><th>PyGoose</th></tr></thead>
+      <tbody>
+        <tr><td>Donate window</td><td>Shows after 480s</td><td>Omitted</td></tr>
+        <tr><td>Config file name</td><td><code>config.goos</code></td><td><code>config.ini</code></td></tr>
+        <tr><td>Sound backend</td><td>WinMM <code>mciSendString</code></td><td><code>pygame.mixer</code></td></tr>
+        <tr><td>Cursor clip on macOS</td><td>Not supported (Windows-only)</td><td>Simulated via <code>QCursor.setPos()</code> each frame</td></tr>
+        <tr><td>Mod format</td><td>C# DLLs</td><td>Python plugins</td></tr>
+        <tr><td>Linux support</td><td>None</td><td>X11 supported</td></tr>
+        <tr><td>New tasks</td><td>None</td><td>WatchMouse, FollowMouse, SneakAttack, Sleep/FakeSleep, PeekBack</td></tr>
+        <tr><td>Config missing</td><td>Show messagebox</td><td>Create silently</td></tr>
+        <tr><td>Notepad font</td><td>System default</td><td>Custom handwriting font from <code>assets/fonts/</code></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ── BACKLOG ── -->
+  <section id="backlog">
+    <h2><span class="sec-num">35</span> Future Backlog</h2>
+
+    <h3>Behavior ideas</h3>
+    <table>
+      <thead><tr><th>Feature</th><th>Summary</th><th>Priority</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Goose on other windows</td>
+          <td>Extend z-climbing to any non-fullscreen window. Use <code>EnumWindows</code> + <code>GetWindowRect</code> (Win) / <code>CGWindowListCopyWindowInfo</code> (macOS). Goose climbs when near top edge, walks across, jumps off other side.</td>
+          <td><span class="badge badge-pending">Backlog</span></td>
+        </tr>
+        <tr>
+          <td>Waddle animation</td>
+          <td>When moving in perfectly straight horizontal or vertical line, random chance to trigger side-to-side waddle — body rocks in rhythm with steps. Not constant, just a random chance when axis-aligned.</td>
+          <td><span class="badge badge-pending">Backlog</span></td>
+        </tr>
+        <tr>
+          <td>Big honk / screen shake</td>
+          <td>Rare behavior. Goose tilts head back, winds up, 2–3 loud rapid honks. Last honk: screen shakes ~250ms by jittering overlay QWidget geometry ±few px. Should be a genuine jumpscare.</td>
+          <td><span class="badge badge-pending">Backlog</span></td>
+        </tr>
+        <tr>
+          <td>Desktop icon theft (illusion)</td>
+          <td>Screenshot-carry approach: screenshot icon region, carry as sprite, draw "bite hole" on overlay. Never touch filesystem. Goose returns icon later and hole heals.</td>
+          <td><span class="badge badge-pending">Backlog</span></td>
+        </tr>
+        <tr>
+          <td>Drags things off window edges</td>
+          <td>Goose pushes a prop (note, meme, object) to the edge of a surface and it falls to the desktop with a bounce. Pairs well with props system.</td>
+          <td><span class="badge badge-pending">Backlog</span></td>
+        </tr>
+        <tr>
+          <td>Props / interactive objects</td>
+          <td>Goose carries items in from offscreen. Silverware is a must (Untitled Goose Game homage: fork, spoon, knife). Also vase (breakable — shatters on drop, stays as pile until clicked), ball, book. Props are separate lightweight overlay widgets.</td>
+          <td><span class="badge badge-pending">Backlog</span></td>
+        </tr>
+        <tr>
+          <td>Goose on own notes/memes (z-depth)</td>
+          <td>Scoped to PyGoose's own windows. Near top-edge detection → climb animation with slight scale-up (nearer = bigger), shadow shift. Walk across top, scale-down jump-off.</td>
+          <td><span class="badge badge-pending">Backlog</span></td>
+        </tr>
+        <tr>
+          <td>Click zone reactions</td>
+          <td>Differentiate head click (current NabMouse) vs body click (annoyed honk / startled wander). Uses hit zones around <code>neck_head_point</code> vs <code>body_center</code>.</td>
+          <td><span class="badge badge-pending">Backlog</span></td>
+        </tr>
+        <tr>
+          <td>Floating draggable menu button</td>
+          <td>Small always-on-top UI element for quit/pause/config — discoverable alternative to ESC hold. Draggable to any corner. Auto-hide when idle.</td>
+          <td><span class="badge badge-pending">Backlog</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Eviction shredder sound</h3>
+    <p>When a window is evicted (§15), no sound currently plays when it disappears. A honk+chomp layered sound would add personality. Marked open pending a dedicated asset.</p>
+  </section>
+
+  <!-- ── KNOWN ISSUES ── -->
+  <section id="known-issues">
+    <h2><span class="sec-num">36</span> Known Issues</h2>
+
+    <table>
+      <thead><tr><th>Issue</th><th>Status</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>ESC quit unreliable in packaged exe</td>
+          <td><span class="badge badge-active">Open</span></td>
+          <td>Works from source but only partially in PyInstaller build. Possible root cause: <code>GetAsyncKeyState</code> permissions, focus behavior of bootloader process, or overlay not properly foregrounded in frozen build.</td>
+        </tr>
+        <tr>
+          <td>macOS arm64 binary</td>
+          <td><span class="badge badge-active">Open</span></td>
+          <td>CI currently produces x86_64 binary triggering Rosetta deprecation warning on Apple Silicon. Fix: add <code>--target-arch arm64</code> to PyInstaller in release.yml, update runner to <code>macos-15</code>. Deferred until after v0.33 stable.</td>
+        </tr>
+        <tr>
+          <td>macOS .app launcher</td>
+          <td><span class="badge badge-active">Abandoned</span></td>
+          <td>Multiple approaches failed on macOS 26 ARM64: BUNDLE mode crashes Qt static init, shell script CFBundleExecutable blocked, C stub launcher did nothing. Shipping raw Unix binary only. <code>packaging/macos/</code> kept for reference.</td>
+        </tr>
+        <tr>
+          <td>Occasional blank meme window</td>
+          <td><span class="badge badge-active">Investigating</span></td>
+          <td>Correct window geometry appears but with no image. Reported twice. Likely race condition in image loading. Not yet reliably reproduced.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+</main>
+
+<script>
+function copyCode(btn) {
+  const pre = btn.closest('.pre-wrap').querySelector('pre');
+  navigator.clipboard.writeText(pre.textContent).then(() => {
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1800);
+  });
+}
+
+const sections = document.querySelectorAll('section[id]');
+const navLinks = document.querySelectorAll('nav a');
+
+function setActive() {
+  let current = '';
+  sections.forEach(s => { if (s.getBoundingClientRect().top <= 80) current = s.id; });
+  navLinks.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + current));
+}
+window.addEventListener('scroll', setActive, { passive: true });
+setActive();
+
+navLinks.forEach(a => {
+  a.addEventListener('click', e => {
+    e.preventDefault();
+    const target = document.querySelector(a.getAttribute('href'));
+    if (!target) return;
+    const det = target.closest('details');
+    if (det) det.open = true;
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+});
+</script>
+</body>
+</html>

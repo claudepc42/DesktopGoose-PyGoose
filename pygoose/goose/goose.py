@@ -19,8 +19,8 @@ from pygoose.engine.rig import Rig
 from pygoose.engine.deck import Deck
 from pygoose.engine.time_keeper import TimeKeeper, DELTA_TIME
 from pygoose.goose.renderer import (
-    update_rig, render_goose, render_foot_marks,
-    FOOT_MARK_LIFETIME, FOOT_MARK_SHRINK_TIME,
+    update_rig, render_goose, render_goose_body, render_goose_head,
+    render_foot_marks, FOOT_MARK_LIFETIME, FOOT_MARK_SHRINK_TIME,
 )
 from pygoose.goose.cursor import set_cursor_clip, release_cursor_clip, is_left_mouse_down
 from pygoose.goose.sound import Sound
@@ -33,9 +33,13 @@ import pygoose.goose.behaviors.sneak_attack  as _b_sneak_attack
 import pygoose.goose.behaviors.sleep         as _b_sleep
 import pygoose.goose.behaviors.peek_back     as _b_peek_back
 import pygoose.goose.behaviors.collect_window as _b_collect
+import pygoose.goose.behaviors.carry_prop    as _b_carry_prop
 from pygoose.goose.behaviors.sleep    import SleepStage
 from pygoose.goose.behaviors.peek_back import PeekBackStage
 from pygoose.goose.behaviors.watch_mouse import WatchSubState
+from pygoose.goose.props.prop import Prop, PropType, PropState
+from pygoose.goose.props.prop_renderer import render_props
+from pygoose.goose.props.physics import tick_props
 
 
 # ---------------------------------------------------------------------------
@@ -71,25 +75,28 @@ class Task(Enum):
     SNEAK_ATTACK          = "sneak_attack"
     SLEEP                 = "sleep"
     PEEK_BACK             = "peek_back"
+    CARRY_PROP            = "carry_prop"
 
 
 TASK_WEIGHTED_LIST = [
+    Task.TRACK_MUD,                 # 2/18
     Task.TRACK_MUD,
-    Task.TRACK_MUD,
+    Task.COLLECT_WINDOW_MEME,       # 2/18
     Task.COLLECT_WINDOW_MEME,
-    Task.COLLECT_WINDOW_MEME,
+    Task.COLLECT_WINDOW_NOTEPAD,    # 2/18
     Task.COLLECT_WINDOW_NOTEPAD,
-    Task.COLLECT_WINDOW_NOTEPAD,
-    Task.COLLECT_WINDOW_NOTEPAD,
+    Task.NAB_MOUSE,                 # 3/18
     Task.NAB_MOUSE,
     Task.NAB_MOUSE,
-    Task.NAB_MOUSE,
+    Task.WATCH_MOUSE,               # 2/18
     Task.WATCH_MOUSE,
-    Task.WATCH_MOUSE,
+    Task.FOLLOW_MOUSE,              # 2/18
     Task.FOLLOW_MOUSE,
-    Task.FOLLOW_MOUSE,
-    Task.SNEAK_ATTACK,
-    Task.SLEEP,
+    Task.SNEAK_ATTACK,              # 1/18
+    Task.SLEEP,                     # 1/18
+    Task.CARRY_PROP,                # 3/18
+    Task.CARRY_PROP,
+    Task.CARRY_PROP,
 ]
 
 
@@ -164,6 +171,7 @@ def _build_dispatch_tables():
     _BEHAVIOR_ENTER[Task.SNEAK_ATTACK]           = _b_sneak_attack.enter
     _BEHAVIOR_ENTER[Task.SLEEP]                  = _b_sleep.enter
     _BEHAVIOR_ENTER[Task.PEEK_BACK]              = _b_peek_back.enter
+    _BEHAVIOR_ENTER[Task.CARRY_PROP]             = _b_carry_prop.enter
 
     _BEHAVIOR_TICK[Task.WANDER]                 = _b_wander.tick
     _BEHAVIOR_TICK[Task.TRACK_MUD]              = _b_track_mud.tick
@@ -175,6 +183,7 @@ def _build_dispatch_tables():
     _BEHAVIOR_TICK[Task.SNEAK_ATTACK]           = _b_sneak_attack.tick
     _BEHAVIOR_TICK[Task.SLEEP]                  = _b_sleep.tick
     _BEHAVIOR_TICK[Task.PEEK_BACK]              = _b_peek_back.tick
+    _BEHAVIOR_TICK[Task.CARRY_PROP]             = _b_carry_prop.tick
 
 
 _build_dispatch_tables()
@@ -229,6 +238,25 @@ class Goose:
         self._anger_closed = False
         self._anger_permanent = False
 
+        # Props
+        self.carrying_prop: Prop | None = None
+        self.props: list[Prop] = []
+        self._dev_debug_props = False
+        self._last_task_name: str = ""
+        self._pending_drop = False
+        self._pending_drop_deadline = 0.0
+        if config and config.dev_force_spawn_prop:
+            try:
+                pt = PropType(config.dev_force_spawn_prop.lower())
+                self.props.append(Prop(
+                    prop_type=pt,
+                    position=Vector2(270, self.screen_h - 728),
+                    state=PropState.PLACED,
+                ))
+                self._dev_debug_props = True
+            except ValueError:
+                pass
+
         # Mouse polling state
         self._last_mouse_down = False
 
@@ -256,6 +284,10 @@ class Goose:
 
     def tick(self):
         self.time_keeper.tick()
+        t = self.time_keeper.time
+        tick_props(self.props, self.time_keeper.delta_time)
+        if self._pending_drop and self._pending_drop_deadline > 0 and t >= self._pending_drop_deadline:
+            self._do_drop_mid_walk()
         self._check_placed_windows()
         self._check_petting()
         self._run_physics()
@@ -274,13 +306,68 @@ class Goose:
             self.rig.sleep_phase += DELTA_TIME
 
     def render(self, painter):
+        render_props(painter, self.props, debug=self._dev_debug_props)
+        if self.config and self.config.dev_hide_goose:
+            return
         render_foot_marks(painter, self.foot_marks, self.time_keeper.time)
         update_rig(self.position, self.direction, self.rig)
-        render_goose(
-            painter, self.rig, self.position, self.direction,
-            self.l_foot_pos, self.r_foot_pos,
-            self.config,
-        )
+        if self.carrying_prop is not None:
+            from pygoose.goose.props.prop_renderer import _render_knife_in_beak, _render_shadow
+            fwd = Vector2.get_from_angle_degrees(self.direction)
+            knife_angle = self.direction + 90.0
+            shadow_prop = self.carrying_prop
+            shadow_prop.position = Vector2(
+                self.position.x + fwd.x * 31.0,
+                self.position.y + fwd.y * 25.0,
+            )
+            shadow_prop.z     = 30.0
+            shadow_prop.angle = knife_angle
+            _render_shadow(painter, shadow_prop)
+            render_goose_body(
+                painter, self.rig, self.position, self.direction,
+                self.l_foot_pos, self.r_foot_pos, self.config,
+            )
+            _render_knife_in_beak(painter, self.rig, self.direction)
+            render_goose_head(painter, self.rig, self.direction, self.config)
+        else:
+            render_goose(
+                painter, self.rig, self.position, self.direction,
+                self.l_foot_pos, self.r_foot_pos, self.config,
+            )
+        if self.config and (self.config.dev_force_task or self.config.dev_short_wander
+                            or self.config.dev_force_fake_sleep or self.config.dev_hide_goose):
+            self._render_dev_hud(painter)
+
+    def _render_dev_hud(self, painter) -> None:
+        from PyQt6.QtCore import QRectF
+        from PyQt6.QtGui import QColor, QFont
+        from PyQt6.QtCore import Qt
+        task_name = self.current_task.value if self.current_task else "?"
+        stage_name = ""
+        if self.task_state and hasattr(self.task_state, "stage"):
+            stage_name = f" / {self.task_state.stage.value}"
+        current_text = f"now:  {task_name}{stage_name}"
+        last_text    = f"last: {self._last_task_name or '—'}"
+        font = QFont("Courier New", 9)
+        painter.setFont(font)
+        fm = painter.fontMetrics()
+        pad = 6
+        line_h = fm.height()
+        w = max(fm.horizontalAdvance(current_text), fm.horizontalAdvance(last_text)) + pad * 2
+        h = line_h * 2 + pad * 2
+        x = int(self.screen_w // 2 - w // 2)
+        y = int(self.screen_h - h - 50)
+        w = int(w)
+        h = int(h)
+        painter.save()
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(0, 0, 0, 160))
+        painter.drawRoundedRect(x, y, w, h, 4, 4)
+        painter.setPen(QColor(220, 220, 220))
+        painter.drawText(QRectF(x + pad, y + pad, w - pad * 2, line_h), Qt.AlignmentFlag.AlignLeft, current_text)
+        painter.setPen(QColor(160, 160, 160))
+        painter.drawText(QRectF(x + pad, y + pad + line_h, w - pad * 2, line_h), Qt.AlignmentFlag.AlignLeft, last_text)
+        painter.restore()
 
     def dirty_rect(self):
         """Decide whether this frame needs repainting and, if so, which region.
@@ -319,6 +406,12 @@ class Goose:
             if shrink_start - 0.1 <= t <= shrink_start + FOOT_MARK_SHRINK_TIME + 0.1:
                 any_mark_animating = True
                 r = r.united(QRect(int(m.position.x) - 6, int(m.position.y) - 6, 12, 12))
+
+        if self._dev_debug_props or (self.config and (
+                self.config.dev_force_task or self.config.dev_short_wander
+                or self.config.dev_force_fake_sleep or self.config.dev_hide_goose)):
+            self._last_render_sig = sig
+            return QRect(0, 0, int(self.screen_w), int(self.screen_h))
 
         changed = (sig != self._last_render_sig) or any_mark_animating
         self._last_render_sig = sig
@@ -489,6 +582,20 @@ class Goose:
 
     def _check_petting(self):
         mouse_down = is_left_mouse_down()
+        if mouse_down and not self._last_mouse_down:
+            cursor = QCursor.pos()
+            mouse_pos = Vector2(float(cursor.x()), float(cursor.y()))
+
+            if self._dev_debug_props and self.props:
+                from pygoose.goose.props.prop_renderer import get_debug_flip_rect, toggle_debug_side
+                frect = get_debug_flip_rect()
+                if frect:
+                    fx, fy, fw, fh = frect
+                    if fx <= mouse_pos.x <= fx + fw and fy <= mouse_pos.y <= fy + fh:
+                        toggle_debug_side(self.props[0], self.screen_w)
+                        self._last_mouse_down = mouse_down
+                        return
+
         if (self.current_task != Task.NAB_MOUSE
                 and mouse_down
                 and not self._last_mouse_down):
@@ -516,6 +623,9 @@ class Goose:
         self._last_mouse_down = mouse_down
 
     def _set_task(self, task: Task, honk: bool = True):
+        self._last_task_name = self.current_task.value if self.current_task else ""
+        if self.task_state and hasattr(self.task_state, "stage"):
+            self._last_task_name += f" / {self.task_state.stage.value}"
         self.override_extend_neck = False
         self._target_sit_lerp = 0.0
         self._target_neck_tuck = 0.0
@@ -525,11 +635,44 @@ class Goose:
         self.rig.peek_eye = 0
         self.rig.show_exclamation = False
         self.rig.sleep_phase = 0.0
+        # Drop carried prop on task switch — unless pending-drop is being set up
+        # (_pending_drop=True but deadline still 0 means _begin_end_sequence is mid-flight;
+        # let it set the deadline before we fire; any later interrupt clears and drops now).
+        if task != Task.CARRY_PROP and self.carrying_prop is not None:
+            if self._pending_drop and self._pending_drop_deadline == 0.0:
+                pass  # _begin_end_sequence will commit the deadline on return
+            else:
+                self._pending_drop = False
+                self._pending_drop_deadline = 0.0
+                self._release_carried_prop()
         self.current_task = task
         if honk:
             self.sound.honk()
         self.task_state = None
         _BEHAVIOR_ENTER[task](self)
+
+    def _release_carried_prop(self):
+        if self.carrying_prop is None:
+            return
+        from pygoose.goose.props.physics import launch_prop_falling, random_spin
+        fwd      = Vector2.get_from_angle_degrees(self.direction)
+        beak_tip = self.rig.head2_end_point + fwd * 5.0
+        spin = random_spin() if Vector2.magnitude(self.velocity) > 10.0 else 0.0
+        launch_prop_falling(
+            self.carrying_prop,
+            position         = Vector2(beak_tip.x, self.position.y),
+            z                = self.position.y - beak_tip.y,
+            velocity         = Vector2(_random.uniform(-20.0, 20.0), _random.uniform(-5.0, 5.0)),
+            angular_velocity = spin,
+        )
+        self.props.append(self.carrying_prop)
+        self.carrying_prop = None
+
+    def _do_drop_mid_walk(self):
+        self._pending_drop = False
+        self._pending_drop_deadline = 0.0
+        self._freeze_position = False
+        self._release_carried_prop()
 
     def _choose_next_task(self):
         if self.config.dev_force_task:
