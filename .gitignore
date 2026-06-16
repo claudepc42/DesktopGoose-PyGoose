@@ -74,6 +74,7 @@ assets/music_cache.wav
 
 # Claude-specific files (local dev only)
 CLAUDE.md
+PyGoosePRD.html
 optimization.md
 HANDOFF.md
 handoff.md
