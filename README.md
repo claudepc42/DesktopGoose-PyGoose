@@ -6,6 +6,10 @@ A Python/PyQt6 reimplementation of [samperson's Desktop Goose](https://samperson
 
 ---
 
+![Goose with knife and a note reading "i have decided you are my enemy"](Capture.png)
+
+---
+
 ## What it does
 
 A goose lives on your desktop. He has opinions about you. He will:
